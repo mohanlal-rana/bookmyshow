@@ -8,9 +8,10 @@ export const createShow = async (
 ) => {
   try {
      const organizerId = req.user._id;
-
+     const image = req.file?.path;
     const show = await Show.create({
       ...req.body,
+      image,
       organizerId,
     });
 
@@ -29,12 +30,34 @@ export const createShow = async (
   }
 };
 
-
-// ================= GET ALL SHOWS =================
-export const getShows = async (
+export const getShowsByOrganizer = async (
   req,
   res
 ) => {
+  try {
+    const organizerId = req.user._id;
+
+    const shows = await Show.find({
+      organizerId,
+    }).sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      shows,
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Failed to fetch shows for the organizer",
+    });
+  }
+}
+
+// ================= GET ALL SHOWS =================
+export const getShows = async (req, res) => {
   try {
     const {
       genre,
@@ -44,19 +67,19 @@ export const getShows = async (
       limit = 10,
     } = req.query;
 
-    const query = {};
+    const query = {
+      status: "published",
+      isVerified: true,
+    };
 
-    // ================= FILTER BY GENRE =================
     if (genre) {
       query.genre = genre;
     }
 
-    // ================= FILTER BY CITY =================
     if (city) {
       query["venue.city"] = city;
     }
 
-    // ================= SEARCH =================
     if (search) {
       query.$or = [
         {
@@ -73,9 +96,6 @@ export const getShows = async (
         },
       ];
     }
-
-    // ================= ONLY PUBLISHED =================
-    query.status = "published";
 
     const shows = await Show.find(query)
       .populate(
@@ -99,8 +119,6 @@ export const getShows = async (
       shows,
     });
   } catch (error) {
-    console.error(error);
-
     return res.status(500).json({
       success: false,
       message: "Failed to fetch shows",
@@ -130,9 +148,18 @@ export const getShowById = async (
       });
     }
 
-    // ================= INCREASE VIEW COUNT =================
-    show.views += 1;
+    // Only allow verified & published shows
+    if (
+      !show.isVerified ||
+      show.status !== "published"
+    ) {
+      return res.status(404).json({
+        success: false,
+        message: "Show not found",
+      });
+    }
 
+    show.views += 1;
     await show.save();
 
     return res.status(200).json({
@@ -250,6 +277,140 @@ export const deleteShow = async (
     return res.status(500).json({
       success: false,
       message: "Failed to delete show",
+    });
+  }
+};
+
+import Show from "../models/showModel.js";
+
+// ================= GET ALL SHOWS FOR ADMIN =================
+export const getShowsByAdmin = async (
+  req,
+  res
+) => {
+  try {
+    const shows = await Show.find()
+      .populate(
+        "organizerId",
+        "name email profileImage"
+      )
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: shows.length,
+      shows,
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch shows",
+    });
+  }
+};
+
+// ================= GET SINGLE SHOW FOR ADMIN =================
+export const getShowByAdminId = async (
+  req,
+  res
+) => {
+  try {
+    const { id } = req.params;
+
+    const show = await Show.findById(id)
+      .populate(
+        "organizerId",
+        "name email profileImage"
+      );
+
+    if (!show) {
+      return res.status(404).json({
+        success: false,
+        message: "Show not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      show,
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch show",
+    });
+  }
+};
+
+// ================= DELETE SHOW BY ADMIN =================
+export const deleteShowByAdmin = async (
+  req,
+  res
+) => {
+  try {
+    const { id } = req.params;
+
+    const show = await Show.findById(id);
+
+    if (!show) {
+      return res.status(404).json({
+        success: false,
+        message: "Show not found",
+      });
+    }
+
+    await show.deleteOne();
+
+    return res.status(200).json({
+      success: true,
+      message: "Show deleted successfully",
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete show",
+    });
+  }
+};
+
+// ================= VERIFY SHOW =================
+export const verifyShow = async (
+  req,
+  res
+) => {
+  try {
+    const { id } = req.params;
+
+    const show = await Show.findById(id);
+
+    if (!show) {
+      return res.status(404).json({
+        success: false,
+        message: "Show not found",
+      });
+    }
+
+    show.isVerified = true;
+
+    await show.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Show verified successfully",
+      show,
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to verify show",
     });
   }
 };

@@ -31,19 +31,18 @@ router.put(
   ]),
   fillFileNames,
   validate(organizerSchema), // consider renaming to organizerSchema
-  beOrganizer
-);
-
-router.put(
-  "/verify/:id",
-  authenticateUser,
-  authorizeAdmin,
-  verifyOrganizer
+  beOrganizer,
 );
 
 // for admin
+router.put("/verify/:id", authenticateUser, authorizeAdmin, verifyOrganizer);
 router.get("/", authenticateUser, authorizeAdmin, getAllUsers);
-router.put("/toggle-active/:id", authenticateUser, authorizeAdmin, toggleUserActive)
+router.put(
+  "/toggle-active/:id",
+  authenticateUser,
+  authorizeAdmin,
+  toggleUserActive,
+);
 router.get("/:id", authenticateUser, authorizeAdmin, getUserById);
 router.delete("/:id", authenticateUser, authorizeAdmin, deleteUser);
 
