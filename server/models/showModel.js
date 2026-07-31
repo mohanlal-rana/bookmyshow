@@ -19,11 +19,6 @@ const ShowSchema = new mongoose.Schema(
       maxlength: 2000,
     },
 
-    image: {
-      type: String,
-      default: "",
-    },
-
     bannerImage: {
       type: String,
       default: "",
@@ -114,30 +109,10 @@ const ShowSchema = new mongoose.Schema(
       default: 5,
     },
 
-    // ================= TICKET CATEGORIES =================
-    ticketTypes: [
-      {
-        name: {
-          type: String,
-          required: true,
-        },
-
         price: {
           type: Number,
           required: true,
         },
-
-        quantity: {
-          type: Number,
-          required: true,
-        },
-
-        sold: {
-          type: Number,
-          default: 0,
-        },
-      },
-    ],
 
     // ================= ORGANIZER =================
     organizerId: {
@@ -158,31 +133,9 @@ const ShowSchema = new mongoose.Schema(
       default: "published",
     },
 
-    isFeatured: {
-      type: Boolean,
-      default: false,
-    },
-
-    isTrending: {
-      type: Boolean,
-      default: false,
-    },
     isVerified:{
       type: Boolean,
       default: false,
-    },
-
-    // ================= RATINGS =================
-    ratingsAverage: {
-      type: Number,
-      default: 0,
-      min: 0,
-      max: 5,
-    },
-
-    ratingsQuantity: {
-      type: Number,
-      default: 0,
     },
 
     // ================= BOOKING INFO =================

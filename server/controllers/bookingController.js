@@ -111,6 +111,7 @@ export const mockPaymentSuccess = async (req, res) => {
       );
 
       tickets.push({
+        ticketId,
         seatNumber: null,
         ticketType: booking.ticketType,
         price: ticketInfo.price,

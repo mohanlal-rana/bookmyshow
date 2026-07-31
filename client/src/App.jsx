@@ -15,6 +15,7 @@ import AddEvent from "./pages/organizer/AddEvent";
 import OrganizerEventDetail from "./pages/organizer/OrganizerEventDetail";
 import EditEvent from "./pages/organizer/EditEvent";
 import UserDetail from "./pages/admin/UserDetail";
+import EventDetail from "./pages/EventDetail";
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
     <Route path="/" element={<Home />} />
     <Route path="/signup" element={<Signup/>}/>
     <Route path="/login" element={<Login/>}/>
+    <Route path="/event/:id" element={<EventDetail/>}/>
           // admin Routes
       <Route path='/admin' element={<AdminLayout/>}> 
         <Route index element={<Navigate to="dashboard" replace />} />
@@ -35,7 +37,7 @@ export default function App() {
       </Route> 
 
       // owner Routes
-      <Route path='/owner' element={<OrganizerLayout/>}> 
+      <Route path='/organizer' element={<OrganizerLayout/>}> 
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path='dashboard' element={<OrganizerDashboard/>}/>
         <Route path='events' element={<OrganizerEventManagement/>}/>

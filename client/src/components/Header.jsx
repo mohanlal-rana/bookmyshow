@@ -27,9 +27,9 @@ export default function Header() {
 
     if (role === "organizer") {
       return [
-        { name: "Dashboard", path: "/owner/dashboard" },
-        { name: "My Events", path: "/owner/events" },
-        { name: "Add Event", path: "/owner/events/add" },
+        { name: "Dashboard", path: "/organizer/dashboard" },
+        { name: "My Events", path: "/organizer/events" },
+        { name: "Add Event", path: "/organizer/events/add" },
       ];
     }
 

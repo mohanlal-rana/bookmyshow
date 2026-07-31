@@ -1,6 +1,6 @@
 import express from "express";
-import { createShow, getShows, getShowById, updateShow, deleteShow, getShowsByOrganizer, verifyShow, getShowsByAdmin, getShowByAdminId, deleteShowByAdmin } from "../controllers/showController.js";
-import { authenticateUser, authorizeOrganizer } from "../middlewares/authMiddleware.js";
+import { createShow, getShows, getShowById, updateShow, deleteShow, getShowsByOrganizer, verifyShow, getShowsByAdmin, getShowByAdminId, deleteShowByAdmin, getOneShowByOrganizer } from "../controllers/showController.js";
+import { authenticateUser, authorizeAdmin, authorizeOrganizer } from "../middlewares/authMiddleware.js";
 import validate from "../middlewares/validateMiddleware.js";
 import { showCreateSchema, showUpdateSchema } from "../validators/showValidator.js";
 import upload from "../middlewares/uploadMiddleware.js";
@@ -13,10 +13,15 @@ router.get("/:id", getShowById);
 
 //organizer routes
 
-router.post("/",authenticateUser,authorizeOrganizer,upload.single("image"), validate(showCreateSchema), createShow);
+router.post("/",authenticateUser,authorizeOrganizer,  upload.fields([
+    { name: "bannerImage", maxCount: 1 },
+  ]), validate(showCreateSchema), createShow);
 router.get("/organizer/getShows", authenticateUser, authorizeOrganizer, getShowsByOrganizer);
-router.put("/:id",authenticateUser, authorizeOrganizer, validate(showUpdateSchema), updateShow);
-router.delete("/:id", authenticateUser, authorizeOrganizer, deleteShow);
+router.get("/organizer/shows/:id", authenticateUser, authorizeOrganizer, getOneShowByOrganizer);
+router.put("/organizer/shows/:id", authenticateUser, authorizeOrganizer,   upload.fields([
+    { name: "bannerImage", maxCount: 1 },
+  ]), validate(showUpdateSchema), updateShow);
+router.delete("/organizer/shows/:id", authenticateUser, authorizeOrganizer, deleteShow);
 
 
 //admin routes

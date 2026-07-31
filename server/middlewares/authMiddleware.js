@@ -32,7 +32,11 @@ export const authorizeOrganizer = (req, res, next) => {
   if (req.user?.role === "organizer" && req.user?.organizer.isVerified) return next();
   res.status(403).json({ message: "Access denied. Organizer is only allowed" });
 };
-
+export const authorizeChecker = (req, res, next) => {
+  console.log("authorize checker")
+  if (req.user?.role === "checker") return next();
+  res.status(403).json({ message: "Access denied. Checker is only allowed" });
+};  
 export const authorizeAdmin = (req, res, next) => {
   if (req.user?.role === "admin") return next();
   res.status(403).json({ message: "Access denied. Admins is only allowed." });

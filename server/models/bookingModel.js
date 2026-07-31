@@ -22,6 +22,10 @@ const bookingSchema = new mongoose.Schema(
 
     tickets: [
       {
+        ticketId: {
+          type: String,
+          required: true,
+        },
         seatNumber: String, // optional for concerts
         ticketType: {
           type: String, // VIP, Gold, Silver
@@ -76,7 +80,7 @@ const bookingSchema = new mongoose.Schema(
       default: Date.now,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export default mongoose.model("Booking", bookingSchema);

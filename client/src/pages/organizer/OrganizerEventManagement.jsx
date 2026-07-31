@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 export default function OrganizerEventManagement() {
   const API = import.meta.env.VITE_API;
+  const navigate = useNavigate();
 
   const [shows, setShows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -12,12 +14,9 @@ export default function OrganizerEventManagement() {
       setLoading(true);
       setError("");
 
-      const res = await fetch(
-        `${API}/api/shows/organizer/getShows`,
-        {
-          credentials: "include",
-        }
-      );
+      const res = await fetch(`${API}/api/shows/organizer/getShows`, {
+        credentials: "include",
+      });
 
       const data = await res.json();
 
@@ -25,7 +24,7 @@ export default function OrganizerEventManagement() {
         throw new Error(data.message || "Failed to fetch shows");
       }
 
-      setShows(data.shows);
+      setShows(data.shows || []);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -70,6 +69,7 @@ export default function OrganizerEventManagement() {
               <th className="p-3 text-left">Tickets</th>
               <th className="p-3 text-left">Status</th>
               <th className="p-3 text-left">Views</th>
+              <th className="p-3 text-center">Actions</th>
             </tr>
           </thead>
 
@@ -84,14 +84,16 @@ export default function OrganizerEventManagement() {
                   <div className="flex items-center gap-3">
                     <img
                       src={
-                        show.image?.startsWith("http")
-                          ? show.image
-                          : `${API}/${show.image}`
+                        show.image
+                          ? show.image.startsWith("http")
+                            ? show.image
+                            : `${API}/${show.image}`
+                          : "/placeholder.png"
                       }
-                      alt="event"
+                      alt={show.name}
                       className="w-10 h-10 rounded object-cover"
                     />
-                    {show.name}
+                    <span>{show.name}</span>
                   </div>
                 </td>
 
@@ -99,19 +101,16 @@ export default function OrganizerEventManagement() {
                 <td className="p-3">{show.genre}</td>
 
                 {/* City */}
-                <td className="p-3">
-                  {show.venue?.city}
-                </td>
+                <td className="p-3">{show.venue?.city}</td>
 
                 {/* Date */}
                 <td className="p-3">
-                  {new Date(show.date).toDateString()}
+                  {new Date(show.date).toLocaleDateString()}
                 </td>
 
                 {/* Tickets */}
                 <td className="p-3">
-                  {show.availableTickets} /{" "}
-                  {show.totalTickets}
+                  {show.availableTickets} / {show.totalTickets}
                 </td>
 
                 {/* Status */}
@@ -129,14 +128,26 @@ export default function OrganizerEventManagement() {
 
                 {/* Views */}
                 <td className="p-3">{show.views}</td>
+
+                {/* Actions */}
+                <td className="p-3 text-center">
+                  <button
+                    onClick={() =>
+                      navigate(`/organizer/events/${show._id}`)
+                    }
+                    className="bg-[#34908B] hover:bg-[#2b7a75] text-white px-4 py-2 rounded-md text-sm transition"
+                  >
+                    View
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
 
         {shows.length === 0 && (
-          <div className="p-6 text-gray-500">
-            No events found
+          <div className="p-6 text-center text-gray-500">
+            No events found.
           </div>
         )}
       </div>
