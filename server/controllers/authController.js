@@ -78,7 +78,7 @@ export const login = async (req, res) => {
 
     const normalizedEmail = email.toLowerCase();
 
-    // 🔥 IMPORTANT FIX HERE
+    // Find user including password field
     const userExists = await User.findOne({
       email: normalizedEmail,
     }).select("+password");
@@ -90,6 +90,15 @@ export const login = async (req, res) => {
       });
     }
 
+    // 🔒 CHECK ACCOUNT STATUS (ACTIVE & BLOCKED)
+    if (!userExists.isActive || userExists.isBlocked) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is deactivated or blocked. Please contact support.",
+      });
+    }
+
+    // Compare password
     const isMatch = await userExists.comparePassword(password);
 
     if (!isMatch) {
@@ -99,6 +108,10 @@ export const login = async (req, res) => {
       });
     }
 
+    // Update last login timestamp
+    await userExists.updateLastLogin();
+
+    // Generate JWT token
     const token = await userExists.generateToken();
 
     res.cookie("token", token, {
@@ -116,6 +129,7 @@ export const login = async (req, res) => {
         name: userExists.name,
         email: userExists.email,
         role: userExists.role,
+        isActive: userExists.isActive,
       },
     });
   } catch (error) {
@@ -127,7 +141,6 @@ export const login = async (req, res) => {
     });
   }
 };
-
 // ================= LOGOUT =================
 export const logout = async (req, res) => {
   try {

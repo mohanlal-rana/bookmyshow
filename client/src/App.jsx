@@ -20,6 +20,7 @@ import MakePayment from "./pages/MakePayment";
 import MyBookings from "./pages/MyBookings";
 import TicketDetails from "./pages/TicketDetails";
 import OrganizerBookings from "./pages/organizer/OrganizerBookings";
+import UpgradeToOrganizer from "./pages/UpgradeToOrganizer";
 
 export default function App() {
   return (
@@ -33,6 +34,7 @@ export default function App() {
     <Route path="/booking/payment/:id" element={<MakePayment/>}/>
     <Route path="/my-bookings" element={<MyBookings/>}/>
     <Route path="/booking/tickets/:bookingId" element={<TicketDetails />} />
+    <Route path="/upgrade-to-organizer" element={<UpgradeToOrganizer/>} />
           // admin Routes
       <Route path='/admin' element={<AdminLayout/>}> 
         <Route index element={<Navigate to="dashboard" replace />} />

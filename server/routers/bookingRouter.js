@@ -1,12 +1,12 @@
 import express from "express";
 import {
   createBooking,
-  getAllBookings,
   getBookingById,
   cancelBooking,
   deleteBooking,
   mockPaymentSuccess,
   getOrganizerBookings,
+  getUserBookings,
 } from "../controllers/bookingController.js";
 import { authenticateUser, authorizeOrganizer } from "../middlewares/authMiddleware.js";
 
@@ -20,7 +20,7 @@ router.post("/",authenticateUser,createBooking);
 router.post("/mock-pay/:bookingId", authenticateUser, mockPaymentSuccess);
 
 // READ ALL
-router.get("/",authenticateUser ,getAllBookings);
+router.get("/",authenticateUser ,getUserBookings);
 
 // READ ONE
 router.get("/:id",authenticateUser, getBookingById);

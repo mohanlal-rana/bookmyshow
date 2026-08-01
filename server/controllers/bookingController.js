@@ -71,31 +71,48 @@ export const createBooking = async (req, res) => {
 // 💳 MOCK PAYMENT SUCCESS (Atomic Updates)
 // ===============================
 export const mockPaymentSuccess = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  let session = null;
 
   try {
+    // Only start transactions if connected to a replica set
+    const isReplicaSet = mongoose.connection.getClient().topology?.description?.type !== 'Single';
+    if (isReplicaSet) {
+      session = await mongoose.startSession();
+      session.startTransaction();
+    }
+
     const { bookingId } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(bookingId)) {
-      await session.endSession();
+      if (session) {
+        await session.endSession();
+      }
       return res.status(400).json({ success: false, message: "Invalid Booking ID." });
     }
 
-    const booking = await Booking.findById(bookingId).session(session);
+    const bookingQuery = Booking.findById(bookingId);
+    if (session) bookingQuery.session(session);
+    const booking = await bookingQuery;
+
     if (!booking) {
-      await session.abortTransaction();
-      await session.endSession();
+      if (session) {
+        await session.abortTransaction();
+        await session.endSession();
+      }
       return res.status(404).json({ success: false, message: "Booking not found." });
     }
 
     if (booking.paymentStatus === "paid") {
-      await session.abortTransaction();
-      await session.endSession();
+      if (session) {
+        await session.abortTransaction();
+        await session.endSession();
+      }
       return res.status(400).json({ success: false, message: "Booking is already paid." });
     }
 
-    // Atomic ticket deduction prevents race conditions
+    const updateOptions = { new: true };
+    if (session) updateOptions.session = session;
+
     const updatedShow = await Show.findOneAndUpdate(
       {
         _id: booking.showId,
@@ -107,19 +124,20 @@ export const mockPaymentSuccess = async (req, res) => {
           soldTickets: booking.totalTickets,
         },
       },
-      { new: true, session }
+      updateOptions
     );
 
     if (!updatedShow) {
-      await session.abortTransaction();
-      await session.endSession();
+      if (session) {
+        await session.abortTransaction();
+        await session.endSession();
+      }
       return res.status(400).json({
         success: false,
         message: "Tickets sold out or unavailable.",
       });
     }
 
-    // Generate QR Tickets in parallel
     const ticketPromises = Array.from({ length: booking.totalTickets }, async () => {
       const ticketId = new mongoose.Types.ObjectId().toString();
       const qrPayload = {
@@ -142,10 +160,14 @@ export const mockPaymentSuccess = async (req, res) => {
     booking.tickets = tickets;
     booking.paymentStatus = "paid";
     booking.bookingStatus = "confirmed";
-    await booking.save({ session });
-
-    await session.commitTransaction();
-    await session.endSession();
+    
+    if (session) {
+      await booking.save({ session });
+      await session.commitTransaction();
+      await session.endSession();
+    } else {
+      await booking.save();
+    }
 
     return res.status(200).json({
       success: true,
@@ -153,8 +175,10 @@ export const mockPaymentSuccess = async (req, res) => {
       booking,
     });
   } catch (error) {
-    await session.abortTransaction();
-    await session.endSession();
+    if (session) {
+      await session.abortTransaction();
+      await session.endSession();
+    }
     console.error("🔴 Error in mockPaymentSuccess:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -211,13 +235,29 @@ export const getOrganizerBookings = async (req, res) => {
 };
 
 // Standard helper queries (Lean optimized)
-export const getAllBookings = async (req, res) => {
+export const getUserBookings = async (req, res) => {
   try {
-    const bookings = await Booking.find()
-      .populate("userId", "name email")
-      .populate("showId", "name date venue")
+    // Extract userId attached by your auth middleware
+    const userId = req.user?._id || req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: User account not found.",
+      });
+    }
+
+    // Filter bookings matching this specific userId
+    const bookings = await Booking.find({ userId })
+      .populate("showId", "name date venue price bannerImage")
+      .sort({ createdAt: -1 }) // Sort newest first
       .lean();
-    return res.status(200).json({ success: true, count: bookings.length, bookings });
+
+    return res.status(200).json({
+      success: true,
+      count: bookings.length,
+      bookings,
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
