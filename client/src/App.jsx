@@ -16,6 +16,10 @@ import OrganizerEventDetail from "./pages/organizer/OrganizerEventDetail";
 import EditEvent from "./pages/organizer/EditEvent";
 import UserDetail from "./pages/admin/UserDetail";
 import EventDetail from "./pages/EventDetail";
+import MakePayment from "./pages/MakePayment";
+import MyBookings from "./pages/MyBookings";
+import TicketDetails from "./pages/TicketDetails";
+import OrganizerBookings from "./pages/organizer/OrganizerBookings";
 
 export default function App() {
   return (
@@ -26,6 +30,9 @@ export default function App() {
     <Route path="/signup" element={<Signup/>}/>
     <Route path="/login" element={<Login/>}/>
     <Route path="/event/:id" element={<EventDetail/>}/>
+    <Route path="/booking/payment/:id" element={<MakePayment/>}/>
+    <Route path="/my-bookings" element={<MyBookings/>}/>
+    <Route path="/booking/tickets/:bookingId" element={<TicketDetails />} />
           // admin Routes
       <Route path='/admin' element={<AdminLayout/>}> 
         <Route index element={<Navigate to="dashboard" replace />} />
@@ -44,6 +51,7 @@ export default function App() {
         <Route path='events/add' element={<AddEvent/>}/>
         <Route path='events/:id' element={<OrganizerEventDetail/>}/>
         <Route path='events/edit/:id' element={<EditEvent/>}/>
+        <Route path='bookings' element={<OrganizerBookings/>}/>
       </Route>
   </Routes>
 </BrowserRouter>

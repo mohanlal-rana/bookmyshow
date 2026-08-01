@@ -10,6 +10,7 @@ export default function EventDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [ticketQuantity, setTicketQuantity] = useState(1);
+  const [selectedTicketType, setSelectedTicketType] = useState("");
 
   useEffect(() => {
     const fetchShowDetail = async () => {
@@ -25,6 +26,11 @@ export default function EventDetail() {
         }
 
         setShow(data.show);
+        
+        // Auto-select first ticket type if available
+        if (data.show?.ticketTypes?.length > 0) {
+          setSelectedTicketType(data.show.ticketTypes[0].name);
+        }
       } catch (err) {
         setError(err.message);
       } finally {
@@ -36,9 +42,13 @@ export default function EventDetail() {
   }, [API, id]);
 
   const handleBooking = () => {
-    // Navigate to booking page or trigger checkout flow
-    navigate(`/shows/${id}/book`, {
-      state: { quantity: ticketQuantity, show },
+    // Navigate to payment page with required state
+    navigate(`/booking/payment/${id}`, {
+      state: { 
+        show, 
+        quantity: ticketQuantity,
+        ticketType: selectedTicketType || show?.ticketTypes?.[0]?.name || "Standard" 
+      },
     });
   };
 
@@ -77,9 +87,13 @@ export default function EventDetail() {
     );
   }
 
+  const selectedTypeInfo = show.ticketTypes?.find((t) => t.name === selectedTicketType) || show.ticketTypes?.[0];
+  const unitPrice = selectedTypeInfo?.price || show.price || 0;
+  const availableQty = selectedTypeInfo?.quantity ?? show.availableTickets ?? 0;
+
   const maxSelectable = Math.min(
     show.maxTicketsPerUser || 5,
-    show.availableTickets || 0
+    availableQty
   );
 
   return (
@@ -143,7 +157,7 @@ export default function EventDetail() {
               </p>
             </div>
 
-            {/* Event Schedule & Location */}
+            {/* Date & Venue */}
             <div className="bg-[#FDF4AF]/40 rounded-xl p-5 border border-yellow-200 space-y-3">
               <h2 className="text-lg font-bold text-gray-800">Date & Venue</h2>
               
@@ -171,83 +185,52 @@ export default function EventDetail() {
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Featured Artists */}
-            {show.artists?.length > 0 && (
+          {/* Ticket Booking Sidebar (Right Column) */}
+          <div className="bg-[#A5E9DD]/30 border border-[#8ce0d2] rounded-xl p-6 h-fit space-y-6">
+            
+            {/* Ticket Type Selector (If show has multiple ticket types) */}
+            {show.ticketTypes?.length > 0 && (
               <div>
-                <h2 className="text-xl font-bold text-gray-800 mb-4">
-                  Featured Artists
-                </h2>
-                <div className="flex flex-wrap gap-6">
-                  {show.artists.map((artist, idx) => (
-                    <div key={idx} className="flex flex-col items-center">
-                      {artist.image ? (
-                        <img
-                          src={
-                            artist.image.startsWith("http")
-                              ? artist.image
-                              : `${API}/${artist.image}`
-                          }
-                          alt={artist.name}
-                          className="w-20 h-20 rounded-full object-cover border-2 border-[#34908B] shadow"
-                        />
-                      ) : (
-                        <div className="w-20 h-20 rounded-full bg-[#34908B] text-white flex items-center justify-center text-xl font-bold border-2 border-[#34908B] shadow">
-                          {artist.name ? artist.name.charAt(0).toUpperCase() : "?"}
-                        </div>
-                      )}
-                      <p className="mt-2 text-sm font-medium text-gray-800">
-                        {artist.name}
-                      </p>
-                    </div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Select Ticket Type
+                </label>
+                <div className="space-y-2">
+                  {show.ticketTypes.map((type) => (
+                    <button
+                      key={type.name}
+                      onClick={() => setSelectedTicketType(type.name)}
+                      className={`w-full text-left p-3 rounded-lg border text-sm transition ${
+                        selectedTicketType === type.name
+                          ? "border-[#34908B] bg-[#34908B]/10 font-bold text-[#34908B]"
+                          : "border-gray-200 bg-white text-gray-700"
+                      }`}
+                    >
+                      <div className="flex justify-between">
+                        <span>{type.name}</span>
+                        <span>Rs. {type.price}</span>
+                      </div>
+                      <span className="text-xs text-gray-500 font-normal">
+                        {type.quantity} tickets left
+                      </span>
+                    </button>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Tags */}
-            {show.tags?.length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-2">
-                {show.tags.map((tag, idx) => (
-                  <span
-                    key={idx}
-                    className="bg-gray-100 text-gray-600 text-xs px-3 py-1 rounded-full border"
-                  >
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Ticket Booking Sidebar (Right Column) */}
-          <div className="bg-[#A5E9DD]/30 border border-[#8ce0d2] rounded-xl p-6 h-fit space-y-6">
             <div>
               <span className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
                 Ticket Price
               </span>
               <p className="text-3xl font-extrabold text-[#34908B] mt-1">
-                {show.price ? `Rs. ${show.price}` : "Free"}
+                {unitPrice ? `Rs. ${unitPrice}` : "Free"}
               </p>
             </div>
 
-            <div className="space-y-2 text-sm text-gray-700 border-t border-b border-[#8ce0d2] py-4">
-              <div className="flex justify-between">
-                <span>Available Tickets:</span>
-                <span className="font-semibold text-gray-900">
-                  {show.availableTickets}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Max per User:</span>
-                <span className="font-semibold text-gray-900">
-                  {show.maxTicketsPerUser}
-                </span>
-              </div>
-            </div>
-
             {/* Quantity Selector */}
-            {show.availableTickets > 0 ? (
+            {availableQty > 0 ? (
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -271,7 +254,7 @@ export default function EventDetail() {
                 <div className="flex justify-between items-center font-bold text-gray-800">
                   <span>Total Amount:</span>
                   <span className="text-xl text-[#34908B]">
-                    Rs. {(show.price || 0) * ticketQuantity}
+                    Rs. {unitPrice * ticketQuantity}
                   </span>
                 </div>
 
@@ -285,16 +268,6 @@ export default function EventDetail() {
             ) : (
               <div className="bg-red-100 text-red-700 font-semibold text-center p-3 rounded-lg border border-red-200">
                 Sold Out
-              </div>
-            )}
-
-            {/* Refund Policy Note */}
-            {show.refundPolicy && (
-              <div className="text-xs text-gray-500 bg-white p-3 rounded-lg border">
-                <p className="font-semibold text-gray-700 mb-0.5">
-                  Refund Policy:
-                </p>
-                <p>{show.refundPolicy}</p>
               </div>
             )}
           </div>

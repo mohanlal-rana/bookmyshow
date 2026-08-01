@@ -6,8 +6,9 @@ import {
   cancelBooking,
   deleteBooking,
   mockPaymentSuccess,
+  getOrganizerBookings,
 } from "../controllers/bookingController.js";
-import { authenticateUser } from "../middlewares/authMiddleware.js";
+import { authenticateUser, authorizeOrganizer } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
@@ -29,5 +30,8 @@ router.put("/cancel/:id", authenticateUser, cancelBooking);
 
 // DELETE
 router.delete("/:id", authenticateUser, deleteBooking);
+
+//organizer can view all bookings for their events
+router.get("/organizer/bookings", authenticateUser,authorizeOrganizer, getOrganizerBookings);
 
 export default router;
