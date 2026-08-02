@@ -16,7 +16,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const allowedOrigins = ["http://localhost:5173"];
+const allowedOrigins = ["http://localhost:5173",];
 
 const corsOptions = {
   origin: function (origin, callback) {
@@ -53,11 +53,9 @@ const startServer = async () => {
   try {
     await CONNECT_DB();
 
-    app.listen(PORT, () => {
-      console.log(
-        `Server is running on http://localhost:${PORT}`
-      );
-    });
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
   } catch (err) {
     console.error("DB connection failed", err);
   }
