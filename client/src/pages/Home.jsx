@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useContext } from "react";
 import { useNavigate } from "react-router-dom";
+import { AuthContext } from "../store/AuthContext";
 
 export default function Home() {
-  const API = import.meta.env.VITE_API;
+  const { API } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const [shows, setShows] = useState([]);

@@ -7,6 +7,7 @@ import {
 import {
   scanTicket,
   getBookingStatus,
+  searchBooking,
 } from "../controllers/checkController.js"
 
 const router = express.Router();
@@ -24,5 +25,7 @@ router.get(
   authorizeChecker,
   getBookingStatus
 );
+
+router.get("/search", authenticateUser, authorizeChecker, searchBooking);
 
 export default router;

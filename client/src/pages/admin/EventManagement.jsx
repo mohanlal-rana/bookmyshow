@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState,useContext } from "react";
 import { useNavigate } from "react-router-dom";
+import { AuthContext } from "../../store/AuthContext.jsx";
 
 export default function EventManagement() {
   const [shows, setShows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const API = import.meta.env.VITE_API;
+  const {API} = useContext(AuthContext);
   const navigate = useNavigate();
 
   const fetchShows = async () => {

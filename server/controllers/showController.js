@@ -1,4 +1,5 @@
 import Show from "../models/showModel.js";
+import Booking from "../models/bookingModel.js";
 
 // Helper to safely parse JSON strings sent via FormData
 const safeParse = (data, fallback = null) => {
@@ -425,18 +426,15 @@ export const getShowsByAdmin = async (
 };
 
 // ================= GET SINGLE SHOW FOR ADMIN =================
-export const getShowByAdminId = async (
-  req,
-  res
-) => {
+export const getShowByAdminId = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const show = await Show.findById(id)
-      .populate(
-        "organizerId",
-        "name email profileImage"
-      );
+    // Fetch the show details
+    const show = await Show.findById(id).populate(
+      "organizerId",
+      "name email profileImage"
+    );
 
     if (!show) {
       return res.status(404).json({
@@ -445,16 +443,49 @@ export const getShowByAdminId = async (
       });
     }
 
+    // Fetch all bookings for this show
+    const bookings = await Booking.find({ showId: id })
+      .populate("userId", "name email phone profileImage")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Calculate total revenue and revenue breakdowns
+    const revenueStats = bookings.reduce(
+      (acc, booking) => {
+        if (booking.paymentStatus === "paid") {
+          acc.totalRevenue += booking.totalAmount || 0;
+          acc.paidCount += 1;
+        } else if (booking.paymentStatus === "pending") {
+          acc.pendingRevenue += booking.totalAmount || 0;
+          acc.pendingCount += 1;
+        } else if (booking.paymentStatus === "refunded") {
+          acc.refundedRevenue += booking.totalAmount || 0;
+          acc.refundedCount += 1;
+        }
+        return acc;
+      },
+      {
+        totalRevenue: 0,
+        paidCount: 0,
+        pendingRevenue: 0,
+        pendingCount: 0,
+        refundedRevenue: 0,
+        refundedCount: 0,
+      }
+    );
+
     return res.status(200).json({
       success: true,
       show,
+      bookings,
+      revenueStats, // Sent to frontend
     });
   } catch (error) {
-    console.error(error);
+    console.error("Error fetching show details:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch show",
+      message: "Failed to fetch show details and bookings",
     });
   }
 };

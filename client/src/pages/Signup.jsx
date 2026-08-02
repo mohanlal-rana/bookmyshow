@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useContext } from "react";
 import { useNavigate } from "react-router";
+import { AuthContext } from "../store/AuthContext";
 
 export default function Signup() {
+  const { API } = useContext(AuthContext);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -13,8 +15,6 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const navigate = useNavigate();
-
-  const API = import.meta.env.VITE_API;
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });

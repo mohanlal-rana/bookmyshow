@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { AuthContext } from "../store/AuthContext";
 
 export default function TicketDetails() {
-  const API = import.meta.env.VITE_API;
+  const { API } = useContext(AuthContext);
   const { bookingId } = useParams();
   const navigate = useNavigate();
 
@@ -39,14 +40,105 @@ export default function TicketDetails() {
     }
   };
 
-  // Helper function to download QR code image
-  const handleDownloadQR = (qrBase64, ticketId, index) => {
-    const link = document.createElement("a");
-    link.href = qrBase64;
-    link.download = `Ticket_${index + 1}_${ticketId}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  /**
+   * Upgraded Download Handler:
+   * Renders a clean pass with an extra-large, borderless QR code for optimal scanner reads.
+   */
+  const handleDownloadBrandedQR = (qrBase64, ticket, index, show) => {
+    if (!qrBase64) return;
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    // Enlarged Canvas Size for maximum crispness
+    canvas.width = 600;
+    canvas.height = 800;
+
+    // High clarity settings
+    ctx.imageSmoothingEnabled = false;
+
+    // White Card Background
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Teal Top Banner
+    ctx.fillStyle = "#34908B";
+    ctx.fillRect(0, 0, canvas.width, 100);
+
+    // Header Text: Event Genre
+    ctx.fillStyle = "#A5E9DD";
+    ctx.font = "bold 14px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText((show.genre || "EVENT PASS").toUpperCase(), 300, 38);
+
+    // Header Text: Ticket Number
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 26px sans-serif";
+    ctx.fillText(`TICKET #${index + 1}`, 300, 75);
+
+    // Event Title
+    ctx.fillStyle = "#1e293b";
+    ctx.font = "bold 24px sans-serif";
+    const titleText = show.name || show.title || "Event Ticket";
+    ctx.fillText(titleText, 300, 145);
+
+    // Venue Info
+    ctx.fillStyle = "#64748b";
+    ctx.font = "15px sans-serif";
+    const venueText = `📍 ${show.venue?.name || "Venue"}, ${show.venue?.city || ""}`;
+    ctx.fillText(venueText, 300, 175);
+
+    // Divider Line (Top)
+    ctx.strokeStyle = "#e2e8f0";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(40, 195);
+    ctx.lineTo(560, 195);
+    ctx.stroke();
+
+    // Draw Large Borderless QR Code Image
+    const qrImage = new Image();
+    qrImage.crossOrigin = "anonymous";
+    qrImage.src = qrBase64;
+
+    qrImage.onload = () => {
+      // Extra large size (420x420) centered on canvas, no outer border or box
+      const qrSize = 420;
+      const qrX = (canvas.width - qrSize) / 2;
+      const qrY = 215;
+
+      ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+
+      // Divider Line (Bottom)
+      ctx.strokeStyle = "#e2e8f0";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(40, 655);
+      ctx.lineTo(560, 655);
+      ctx.stroke();
+
+      // Ticket Price Display
+      ctx.fillStyle = "#34908B";
+      ctx.font = "bold 18px sans-serif";
+      ctx.fillText(`Price: Rs. ${ticket.price || 0}`, 300, 690);
+
+      // Bottom Footer Bar
+      ctx.fillStyle = "#f8fafc";
+      ctx.fillRect(0, 725, canvas.width, 75);
+
+      ctx.fillStyle = "#64748b";
+      ctx.font = "13px sans-serif";
+      ctx.fillText("Please present this QR pass at the entrance gate.", 300, 765);
+
+      // Trigger File Download
+      const link = document.createElement("a");
+      const safeTitle = (show.name || show.title || "Ticket").replace(/[^a-zA-Z0-9]/g, "_");
+      link.download = `${safeTitle}_Ticket_${index + 1}.png`;
+      link.href = canvas.toDataURL("image/png");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
   };
 
   if (loading) {
@@ -125,7 +217,7 @@ export default function TicketDetails() {
               #{booking._id}
             </span>
             <p className="text-xs text-green-600 font-bold mt-1">
-              ✓ {booking.paymentStatus.toUpperCase()}
+              ✓ {booking.paymentStatus?.toUpperCase() || "CONFIRMED"}
             </p>
           </div>
         </div>
@@ -143,9 +235,14 @@ export default function TicketDetails() {
                 className="bg-white rounded-2xl border border-[#8ce0d2] shadow-md p-6 flex flex-col items-center justify-between space-y-4 hover:shadow-lg transition"
               >
                 <div className="w-full flex justify-between items-center border-b pb-3">
-                  <span className="text-sm font-bold text-[#34908B]">
-                    Ticket #{index + 1}
-                  </span>
+                  <div>
+                    <span className="text-sm font-bold text-[#34908B]">
+                      Ticket #{index + 1}
+                    </span>
+                    <p className="text-xs font-semibold text-gray-500 truncate max-w-[180px]">
+                      {show.name || show.title}
+                    </p>
+                  </div>
                   <span
                     className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
                       t.isCheckedIn
@@ -157,36 +254,35 @@ export default function TicketDetails() {
                   </span>
                 </div>
 
-                {/* QR Display */}
+                {/* QR Display - Enlarged and Borderless */}
                 {t.qrCode ? (
-                  <div className="bg-white p-3 border rounded-xl shadow-inner flex flex-col items-center">
+                  <div className="bg-white p-2 flex flex-col items-center">
                     <img
                       src={t.qrCode}
                       alt={`Ticket QR Code ${index + 1}`}
-                      className="w-48 h-48 object-contain"
+                      className="w-64 h-64 object-contain"
                     />
                   </div>
                 ) : (
-                  <div className="w-48 h-48 bg-gray-100 flex items-center justify-center text-xs text-gray-400 rounded-xl">
+                  <div className="w-64 h-64 bg-gray-100 flex items-center justify-center text-xs text-gray-400 rounded-xl">
                     No QR Code Generated
                   </div>
                 )}
 
                 {/* Info & Download Action */}
                 <div className="w-full space-y-3 text-center">
-                  <div className="text-xs text-gray-500 font-mono">
-                    ID: {t.ticketId || t._id}
-                  </div>
                   <div className="text-sm font-semibold text-gray-700">
                     Price: Rs. {t.price}
                   </div>
 
                   <button
-                    onClick={() => handleDownloadQR(t.qrCode, t.ticketId || t._id, index)}
+                    onClick={() =>
+                      handleDownloadBrandedQR(t.qrCode, t, index, show)
+                    }
                     disabled={!t.qrCode}
                     className="w-full bg-[#34908B] hover:bg-[#2b7873] disabled:opacity-50 text-white text-sm font-bold py-2.5 rounded-xl transition shadow-sm flex items-center justify-center gap-2"
                   >
-                    <span>📥</span> Download QR Code
+                    <span>📥</span> Download Full Ticket Pass
                   </button>
                 </div>
               </div>

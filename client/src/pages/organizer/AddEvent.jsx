@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState,useContext } from "react";
 import { useNavigate } from "react-router-dom";
+import { AuthContext } from "../../store/AuthContext";
 
 export default function AddEvent() {
-  const API = import.meta.env.VITE_API;
+  const { API } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({

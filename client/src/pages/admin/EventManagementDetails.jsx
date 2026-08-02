@@ -1,12 +1,22 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { AuthContext } from "../../store/AuthContext";
 
 export default function EventManagementDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const API = import.meta.env.VITE_API;
+  const { API } = useContext(AuthContext);
 
   const [show, setShow] = useState(null);
+  const [bookings, setBookings] = useState([]);
+  const [revenueStats, setRevenueStats] = useState({
+    totalRevenue: 0,
+    paidCount: 0,
+    pendingRevenue: 0,
+    pendingCount: 0,
+    refundedRevenue: 0,
+    refundedCount: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -15,6 +25,11 @@ export default function EventManagementDetails() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [actionError, setActionError] = useState("");
+
+  // Booking Filtering States
+  const [bookingSearch, setBookingSearch] = useState("");
+  const [selectedBookingStatus, setSelectedBookingStatus] = useState("all");
+  const [inspectBooking, setInspectBooking] = useState(null);
 
   useEffect(() => {
     if (id) {
@@ -39,7 +54,11 @@ export default function EventManagementDetails() {
         throw new Error(data.message || "Failed to fetch event details.");
       }
 
-      setShow(data.show || data);
+      setShow(data.show);
+      setBookings(data.bookings || []);
+      if (data.revenueStats) {
+        setRevenueStats(data.revenueStats);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -47,9 +66,7 @@ export default function EventManagementDetails() {
     }
   };
 
-  // ================= ADMIN ACTIONS =================
-
-  // 1. Toggle Event Verification
+  // Toggle Event Verification
   const handleToggleVerify = async () => {
     try {
       setIsVerifying(true);
@@ -67,7 +84,6 @@ export default function EventManagementDetails() {
         throw new Error(data.message || "Failed to update verification status.");
       }
 
-      // Update state dynamically (supports both full object and updated status field responses)
       if (data.show) {
         setShow(data.show);
       } else {
@@ -83,7 +99,7 @@ export default function EventManagementDetails() {
     }
   };
 
-  // 2. Delete Show
+  // Delete Show
   const handleDeleteShow = async () => {
     try {
       setIsDeleting(true);
@@ -101,7 +117,6 @@ export default function EventManagementDetails() {
         throw new Error(data.message || "Failed to delete show.");
       }
 
-      // Redirect back to events list on success
       navigate(-1);
     } catch (err) {
       setActionError(err.message);
@@ -111,7 +126,6 @@ export default function EventManagementDetails() {
     }
   };
 
-  // ================= HELPERS =================
   const formatDate = (dateStr) => {
     if (!dateStr) return "N/A";
     return new Date(dateStr).toLocaleDateString("en-US", {
@@ -121,6 +135,20 @@ export default function EventManagementDetails() {
       day: "numeric",
     });
   };
+
+  // Filter Bookings by Search & Status
+  const filteredBookings = bookings.filter((b) => {
+    const matchesSearch =
+      b.userId?.name?.toLowerCase().includes(bookingSearch.toLowerCase()) ||
+      b.userId?.email?.toLowerCase().includes(bookingSearch.toLowerCase()) ||
+      b.transactionId?.toLowerCase().includes(bookingSearch.toLowerCase()) ||
+      b._id.toLowerCase().includes(bookingSearch.toLowerCase());
+
+    const matchesStatus =
+      selectedBookingStatus === "all" || b.bookingStatus === selectedBookingStatus;
+
+    return matchesSearch && matchesStatus;
+  });
 
   if (loading) {
     return (
@@ -151,6 +179,7 @@ export default function EventManagementDetails() {
   const total = show.totalTickets || 1;
   const sold = show.soldTickets || 0;
   const salesPercent = Math.min(100, Math.round((sold / total) * 100));
+  const maxPossibleRevenue = (show.price || 0) * total;
 
   const bannerSrc = show.bannerImage
     ? show.bannerImage.startsWith("http")
@@ -170,7 +199,6 @@ export default function EventManagementDetails() {
         </button>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Status Badge */}
           <span
             className={`text-xs font-bold px-3 py-1.5 rounded-full uppercase ${
               show.status === "published"
@@ -185,7 +213,6 @@ export default function EventManagementDetails() {
             {show.status}
           </span>
 
-          {/* Verification Toggle Action Button */}
           <button
             onClick={handleToggleVerify}
             disabled={isVerifying}
@@ -204,7 +231,6 @@ export default function EventManagementDetails() {
             )}
           </button>
 
-          {/* Delete Action Button */}
           <button
             onClick={() => setShowDeleteModal(true)}
             className="text-xs font-bold px-4 py-1.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition shadow-sm"
@@ -214,29 +240,20 @@ export default function EventManagementDetails() {
         </div>
       </div>
 
-      {/* Action Error Alert */}
       {actionError && (
         <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl text-sm flex justify-between items-center">
           <span>{actionError}</span>
-          <button
-            onClick={() => setActionError("")}
-            className="font-bold text-red-900 hover:underline"
-          >
+          <button onClick={() => setActionError("")} className="font-bold text-red-900 hover:underline">
             Dismiss
           </button>
         </div>
       )}
 
-      {/* Main Content Card */}
+      {/* Main Show Card */}
       <div className="bg-white rounded-2xl shadow-md border border-[#8ce0d2] overflow-hidden">
-        {/* Banner Section */}
         <div className="relative h-64 md:h-80 bg-gray-900 overflow-hidden">
           {bannerSrc ? (
-            <img
-              src={bannerSrc}
-              alt={show.name}
-              className="w-full h-full object-cover opacity-90"
-            />
+            <img src={bannerSrc} alt={show.name} className="w-full h-full object-cover opacity-90" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-gray-400 font-semibold text-sm">
               No Banner Image Available
@@ -248,53 +265,49 @@ export default function EventManagementDetails() {
             <span className="bg-[#34908B] text-xs font-bold px-3 py-1 rounded-full uppercase">
               {show.genre}
             </span>
-            <h1 className="text-3xl font-extrabold mt-2 drop-shadow-md">
-              {show.name}
-            </h1>
-            <p className="text-sm opacity-90 mt-1">
-              📍 {show.venue?.name}, {show.venue?.city}
-            </p>
+            <h1 className="text-3xl font-extrabold mt-2 drop-shadow-md">{show.name}</h1>
+            <p className="text-sm opacity-90 mt-1">📍 {show.venue?.name}, {show.venue?.city}</p>
           </div>
         </div>
 
         <div className="p-6 md:p-8 space-y-8">
-          {/* Quick Metrics KPI Bar */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-[#FDF4AF]/40 p-4 rounded-xl border border-yellow-200">
+          {/* Quick Metrics KPI Bar (Includes Total Revenue) */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 bg-[#FDF4AF]/40 p-4 rounded-xl border border-yellow-200">
+            <div>
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                Total Revenue
+              </span>
+              <p className="text-xl font-black text-emerald-600">
+                Rs. {revenueStats.totalRevenue.toLocaleString()}
+              </p>
+            </div>
             <div>
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
                 Ticket Price
               </span>
-              <p className="text-xl font-black text-[#34908B]">
-                Rs. {show.price}
-              </p>
+              <p className="text-xl font-black text-[#34908B]">Rs. {show.price}</p>
             </div>
             <div>
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
                 Tickets Sold
               </span>
-              <p className="text-xl font-black text-gray-800">
-                {show.soldTickets} / {show.totalTickets}
-              </p>
+              <p className="text-xl font-black text-gray-800">{show.soldTickets} / {show.totalTickets}</p>
             </div>
             <div>
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
                 Available
               </span>
-              <p className="text-xl font-black text-green-600">
-                {show.availableTickets}
-              </p>
+              <p className="text-xl font-black text-green-600">{show.availableTickets}</p>
             </div>
             <div>
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
-                Total Views
+                Views
               </span>
-              <p className="text-xl font-black text-blue-600">
-                👁️ {show.views || 0}
-              </p>
+              <p className="text-xl font-black text-blue-600">👁️ {show.views || 0}</p>
             </div>
           </div>
 
-          {/* Ticket Progress Bar */}
+          {/* Progress Bar */}
           <div>
             <div className="flex justify-between text-xs font-bold mb-1.5">
               <span className="text-gray-600">Capacity Filled ({salesPercent}%)</span>
@@ -308,9 +321,46 @@ export default function EventManagementDetails() {
             </div>
           </div>
 
+          {/* Financial Overview Card */}
+          <div className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-5 space-y-3">
+            <h3 className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
+              💰 Revenue Summary & Financial Breakdown
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs pt-1">
+              <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-sm">
+                <span className="text-gray-500 block">Collected (Paid)</span>
+                <span className="text-lg font-extrabold text-emerald-700">
+                  Rs. {revenueStats.totalRevenue.toLocaleString()}
+                </span>
+                <span className="text-[10px] text-gray-400 block mt-0.5">
+                  From {revenueStats.paidCount} paid booking(s)
+                </span>
+              </div>
+
+              <div className="bg-white p-3 rounded-xl border border-amber-100 shadow-sm">
+                <span className="text-gray-500 block">Pending Payments</span>
+                <span className="text-lg font-extrabold text-amber-600">
+                  Rs. {revenueStats.pendingRevenue.toLocaleString()}
+                </span>
+                <span className="text-[10px] text-gray-400 block mt-0.5">
+                  From {revenueStats.pendingCount} unconfirmed booking(s)
+                </span>
+              </div>
+
+              <div className="bg-white p-3 rounded-xl border border-blue-100 shadow-sm">
+                <span className="text-gray-500 block">Max Potential Revenue</span>
+                <span className="text-lg font-extrabold text-blue-700">
+                  Rs. {maxPossibleRevenue.toLocaleString()}
+                </span>
+                <span className="text-[10px] text-gray-400 block mt-0.5">
+                  If 100% capacity ({total} tickets) sells out
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* Detailed Info Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
-            {/* Column 1: Time, Venue & Policies */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
             <div className="space-y-6">
               <div>
                 <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
@@ -359,7 +409,6 @@ export default function EventManagementDetails() {
               </div>
             </div>
 
-            {/* Column 2: Organizer, Description & Artists */}
             <div className="space-y-6">
               <div>
                 <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
@@ -386,7 +435,6 @@ export default function EventManagementDetails() {
                 </div>
               </div>
 
-              {/* Performers / Artists */}
               {show.artists && show.artists.length > 0 && (
                 <div>
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
@@ -399,11 +447,7 @@ export default function EventManagementDetails() {
                         className="flex items-center gap-2 bg-gray-50 border px-3 py-1.5 rounded-full text-xs font-semibold text-gray-700"
                       >
                         {artist.image && (
-                          <img
-                            src={artist.image}
-                            alt={artist.name}
-                            className="w-5 h-5 rounded-full object-cover"
-                          />
+                          <img src={artist.image} alt={artist.name} className="w-5 h-5 rounded-full object-cover" />
                         )}
                         <span>{artist.name}</span>
                       </div>
@@ -412,7 +456,6 @@ export default function EventManagementDetails() {
                 </div>
               )}
 
-              {/* Tags */}
               {show.tags && show.tags.length > 0 && (
                 <div>
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
@@ -435,7 +478,186 @@ export default function EventManagementDetails() {
         </div>
       </div>
 
-      {/* Confirmation Modal for Delete Action */}
+      {/* ================= SHOW BOOKINGS & ATTENDEES SECTION ================= */}
+      <div className="bg-white rounded-2xl shadow-md border border-[#8ce0d2] p-6 md:p-8 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
+          <div>
+            <h2 className="text-xl font-extrabold text-gray-800">🎟️ Bookings & Attendees</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Total {bookings.length} booking transaction(s) recorded for this show
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="text"
+              placeholder="Search user, TxID..."
+              value={bookingSearch}
+              onChange={(e) => setBookingSearch(e.target.value)}
+              className="text-xs border border-gray-300 rounded-xl px-3 py-2 outline-none focus:border-[#34908B]"
+            />
+            <select
+              value={selectedBookingStatus}
+              onChange={(e) => setSelectedBookingStatus(e.target.value)}
+              className="text-xs border border-gray-300 rounded-xl px-3 py-2 outline-none focus:border-[#34908B]"
+            >
+              <option value="all">All Statuses</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="pending">Pending</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Bookings Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-gray-50 text-gray-500 uppercase font-bold border-b">
+              <tr>
+                <th className="px-4 py-3">Booking / Tx ID</th>
+                <th className="px-4 py-3">Customer</th>
+                <th className="px-4 py-3">Tickets</th>
+                <th className="px-4 py-3">Amount</th>
+                <th className="px-4 py-3">Payment</th>
+                <th className="px-4 py-3">Booking Status</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filteredBookings.length > 0 ? (
+                filteredBookings.map((b) => (
+                  <tr key={b._id} className="hover:bg-gray-50/80 transition">
+                    <td className="px-4 py-3 font-mono font-bold text-gray-800">
+                      #{b._id.slice(-6)}
+                      <div className="text-[10px] text-gray-400 font-sans">{b.transactionId || "No TxID"}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-bold text-gray-800">{b.userId?.name || "Deleted User"}</div>
+                      <div className="text-gray-500 text-[11px]">{b.userId?.email}</div>
+                    </td>
+                    <td className="px-4 py-3 font-bold text-gray-700">{b.totalTickets}</td>
+                    <td className="px-4 py-3 font-bold text-[#34908B]">Rs. {b.totalAmount}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`px-2 py-0.5 rounded-full font-bold capitalize text-[10px] ${
+                          b.paymentStatus === "paid"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : b.paymentStatus === "pending"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {b.paymentStatus}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`px-2 py-0.5 rounded-full font-bold capitalize text-[10px] ${
+                          b.bookingStatus === "confirmed"
+                            ? "bg-green-100 text-green-700"
+                            : b.bookingStatus === "pending"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {b.bookingStatus}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => setInspectBooking(b)}
+                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded-lg font-bold text-[11px] transition"
+                      >
+                        View Tickets
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="7" className="text-center py-6 text-gray-400">
+                    No bookings found matching criteria.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Booking Ticket Details Modal */}
+      {inspectBooking && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 space-y-4">
+            <div className="flex justify-between items-start border-b pb-3">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">
+                  Booking #{inspectBooking._id.slice(-6)}
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Booked on: {new Date(inspectBooking.createdAt).toLocaleString()}
+                </p>
+              </div>
+              <button
+                onClick={() => setInspectBooking(null)}
+                className="text-gray-400 hover:text-gray-600 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs text-gray-600">
+              <p><strong>Customer:</strong> {inspectBooking.userId?.name} ({inspectBooking.userId?.email})</p>
+              <p><strong>Total Paid:</strong> <span className="font-bold text-[#34908B]">Rs. {inspectBooking.totalAmount}</span></p>
+              <p><strong>Payment Method:</strong> {inspectBooking.paymentMethod || "N/A"}</p>
+              <p><strong>Transaction ID:</strong> {inspectBooking.transactionId || "N/A"}</p>
+            </div>
+
+            <h4 className="font-bold text-xs uppercase text-gray-400 tracking-wider pt-2">
+              Issued Tickets ({inspectBooking.tickets.length})
+            </h4>
+
+            <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
+              {inspectBooking.tickets.map((ticket, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between bg-gray-50 border p-3 rounded-xl text-xs"
+                >
+                  <div>
+                    <span className="font-mono font-bold text-gray-800">{ticket.ticketId}</span>
+                    {ticket.ticketType && (
+                      <span className="ml-2 bg-teal-50 text-[#34908B] border border-teal-200 px-1.5 py-0.5 rounded text-[10px]">
+                        {ticket.ticketType}
+                      </span>
+                    )}
+                    {ticket.seatNumber && (
+                      <span className="ml-2 text-gray-500">Seat: {ticket.seatNumber}</span>
+                    )}
+                  </div>
+                  <div>
+                    {ticket.isCheckedIn ? (
+                      <span className="text-emerald-600 font-bold text-[10px]">✓ Checked In</span>
+                    ) : (
+                      <span className="text-gray-400 text-[10px]">Not Checked In</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end pt-3 border-t">
+              <button
+                onClick={() => setInspectBooking(null)}
+                className="bg-gray-800 hover:bg-gray-900 text-white text-xs px-4 py-2 rounded-xl font-bold transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-red-100 space-y-4">

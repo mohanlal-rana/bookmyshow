@@ -21,6 +21,11 @@ import MyBookings from "./pages/MyBookings";
 import TicketDetails from "./pages/TicketDetails";
 import OrganizerBookings from "./pages/organizer/OrganizerBookings";
 import UpgradeToOrganizer from "./pages/UpgradeToOrganizer";
+import AdminBooking from "./pages/admin/AdminBooking";
+import TicketScanner from "./pages/checker/TicketScanner";
+import CheckerLayout from "./components/CheckerLayout";
+import CheckerDashboard from "./pages/checker/CheckerDashboard";
+import SearchTicket from "./pages/checker/SearchTicket";
 
 export default function App() {
   return (
@@ -43,6 +48,7 @@ export default function App() {
         <Route path='users/:id' element={<UserDetail/>}/>
         <Route path='events' element={<EventManagement/>}/>
         <Route path='events/:id' element={<EventManagementDetails/>}/>
+        <Route path='bookings' element={<AdminBooking/>}/>
       </Route> 
 
       // owner Routes
@@ -54,6 +60,14 @@ export default function App() {
         <Route path='events/:id' element={<OrganizerEventDetail/>}/>
         <Route path='events/edit/:id' element={<EditEvent/>}/>
         <Route path='bookings' element={<OrganizerBookings/>}/>
+      </Route>
+
+      //checker routes
+      <Route path='/checker' element={<CheckerLayout/>}> 
+        <Route index element={<Navigate to="dashboard" replace />} />
+        <Route path='dashboard' element={<CheckerDashboard/>}/>
+        <Route path='scan' element={<TicketScanner/>}/>
+        <Route path='lookup' element={<SearchTicket/>}/>
       </Route>
   </Routes>
 </BrowserRouter>

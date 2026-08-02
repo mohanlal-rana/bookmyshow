@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useContext } from "react";
 import { useNavigate } from "react-router";
+import { AuthContext } from "../store/AuthContext";
 
 export default function UpgradeToOrganizer() {
+  const { API } = useContext(AuthContext);
   const [formData, setFormData] = useState({
     organizationName: "",
     address: "",
@@ -25,8 +27,6 @@ export default function UpgradeToOrganizer() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: "", text: "" });
   const navigate = useNavigate();
-
-  const API = import.meta.env.VITE_API || "http://localhost:5000";
 
   // Handle standard text input updates
   const handleInputChange = (e) => {

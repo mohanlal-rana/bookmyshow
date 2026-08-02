@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { AuthContext } from "../../store/AuthContext";
 
 export default function OrganizerEventDetail() {
-  const API = import.meta.env.VITE_API;
+  const { API } = useContext(AuthContext);
   const { id } = useParams();
   const navigate = useNavigate();
 

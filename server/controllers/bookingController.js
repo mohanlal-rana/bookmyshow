@@ -74,45 +74,44 @@ export const mockPaymentSuccess = async (req, res) => {
   let session = null;
 
   try {
-    // Only start transactions if connected to a replica set
-    const isReplicaSet = mongoose.connection.getClient().topology?.description?.type !== 'Single';
+    const { bookingId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid Booking ID." 
+      });
+    }
+
+    // Safely check replica set status
+    const topologyType = mongoose.connection.getClient().topology?.description?.type;
+    const isReplicaSet = topologyType && topologyType !== "Single";
+
     if (isReplicaSet) {
       session = await mongoose.startSession();
       session.startTransaction();
     }
 
-    const { bookingId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(bookingId)) {
-      if (session) {
-        await session.endSession();
-      }
-      return res.status(400).json({ success: false, message: "Invalid Booking ID." });
-    }
-
-    const bookingQuery = Booking.findById(bookingId);
-    if (session) bookingQuery.session(session);
-    const booking = await bookingQuery;
+    // 1. Fetch Booking
+    const booking = await Booking.findById(bookingId).session(session || null);
 
     if (!booking) {
-      if (session) {
-        await session.abortTransaction();
-        await session.endSession();
-      }
-      return res.status(404).json({ success: false, message: "Booking not found." });
+      if (session) await session.abortTransaction();
+      return res.status(404).json({ 
+        success: false, 
+        message: "Booking not found." 
+      });
     }
 
     if (booking.paymentStatus === "paid") {
-      if (session) {
-        await session.abortTransaction();
-        await session.endSession();
-      }
-      return res.status(400).json({ success: false, message: "Booking is already paid." });
+      if (session) await session.abortTransaction();
+      return res.status(400).json({ 
+        success: false, 
+        message: "Booking is already paid." 
+      });
     }
 
-    const updateOptions = { new: true };
-    if (session) updateOptions.session = session;
-
+    // 2. Decrement Show availability atomically
     const updatedShow = await Show.findOneAndUpdate(
       {
         _id: booking.showId,
@@ -124,28 +123,29 @@ export const mockPaymentSuccess = async (req, res) => {
           soldTickets: booking.totalTickets,
         },
       },
-      updateOptions
+      { new: true, session: session || null }
     );
 
     if (!updatedShow) {
-      if (session) {
-        await session.abortTransaction();
-        await session.endSession();
-      }
+      if (session) await session.abortTransaction();
       return res.status(400).json({
         success: false,
         message: "Tickets sold out or unavailable.",
       });
     }
 
+    // 3. Generate Ticket IDs and QR Codes
     const ticketPromises = Array.from({ length: booking.totalTickets }, async () => {
       const ticketId = new mongoose.Types.ObjectId().toString();
-      const qrPayload = {
+      
+      // QR Payload format matches scan ticket expectations
+      const qrPayload = JSON.stringify({
         bookingId: booking._id,
         ticketId,
         showId: booking.showId,
-      };
-      const qrCode = await QRCode.toDataURL(JSON.stringify(qrPayload));
+      });
+
+      const qrCode = await QRCode.toDataURL(qrPayload);
 
       return {
         ticketId,
@@ -157,16 +157,16 @@ export const mockPaymentSuccess = async (req, res) => {
 
     const tickets = await Promise.all(ticketPromises);
 
+    // 4. Update and save booking
     booking.tickets = tickets;
     booking.paymentStatus = "paid";
     booking.bookingStatus = "confirmed";
-    
+
+    await booking.save({ session: session || null });
+
+    // 5. Commit transaction if active
     if (session) {
-      await booking.save({ session });
       await session.commitTransaction();
-      await session.endSession();
-    } else {
-      await booking.save();
     }
 
     return res.status(200).json({
@@ -175,12 +175,20 @@ export const mockPaymentSuccess = async (req, res) => {
       booking,
     });
   } catch (error) {
-    if (session) {
+    // Only abort if session exists and is still active
+    if (session && session.inTransaction()) {
       await session.abortTransaction();
-      await session.endSession();
     }
     console.error("🔴 Error in mockPaymentSuccess:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ 
+      success: false, 
+      message: error.message || "Internal server error" 
+    });
+  } finally {
+    // Always end the session safely
+    if (session) {
+      await session.endSession();
+    }
   }
 };
 
@@ -306,6 +314,119 @@ export const deleteBooking = async (req, res) => {
     if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
     return res.status(200).json({ success: true, message: "Booking deleted successfully" });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+//admin can view all bookings for all events
+
+export const getAdminBookings = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      search = "",
+      paymentStatus,
+      bookingStatus,
+      startDate,
+      endDate,
+    } = req.query;
+
+    const query = {};
+
+    // 1. Filter by Statuses
+    if (paymentStatus) query.paymentStatus = paymentStatus;
+    if (bookingStatus) query.bookingStatus = bookingStatus;
+
+    // 2. Filter by Date Range
+    if (startDate || endDate) {
+      query.bookedAt = {};
+      if (startDate) query.bookedAt.$gte = new Date(startDate);
+      if (endDate) query.bookedAt.$lte = new Date(endDate);
+    }
+
+    // 3. Search Filter (Matches Transaction ID directly)
+    if (search) {
+      query.$or = [
+        { transactionId: { $regex: search, $options: "i" } },
+        { "tickets.ticketId": { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Execute Main Query with Populates
+    let bookings = await Booking.find(query)
+      .populate("userId", "name email phone profileImage")
+      .populate("showId", "name date venue price bannerImage genre")
+      .populate("organizerId", "name email organizer.organizationName")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+    // Additional Memory Search across populated fields (User/Show)
+    if (search) {
+      const searchRegex = new RegExp(search, "i");
+      bookings = bookings.filter(
+        (b) =>
+          searchRegex.test(b.userId?.name) ||
+          searchRegex.test(b.userId?.email) ||
+          searchRegex.test(b.showId?.name) ||
+          searchRegex.test(b.transactionId)
+      );
+    }
+
+    const totalBookingsCount = await Booking.countDocuments(query);
+
+    // 4. Admin High-Level Dashboard Analytics Aggregation
+    const stats = await Booking.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalRevenue: {
+            $sum: {
+              $cond: [{ $eq: ["$paymentStatus", "paid"] }, "$totalAmount", 0],
+            },
+          },
+          totalTicketsSold: {
+            $sum: {
+              $cond: [{ $eq: ["$bookingStatus", "confirmed"] }, "$totalTickets", 0],
+            },
+          },
+          confirmedBookings: {
+            $sum: { $cond: [{ $eq: ["$bookingStatus", "confirmed"] }, 1, 0] },
+          },
+          pendingBookings: {
+            $sum: { $cond: [{ $eq: ["$bookingStatus", "pending"] }, 1, 0] },
+          },
+          cancelledBookings: {
+            $sum: { $cond: [{ $eq: ["$bookingStatus", "cancelled"] }, 1, 0] },
+          },
+        },
+      },
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      stats: stats[0] || {
+        totalRevenue: 0,
+        totalTicketsSold: 0,
+        confirmedBookings: 0,
+        pendingBookings: 0,
+        cancelledBookings: 0,
+      },
+      pagination: {
+        total: totalBookingsCount,
+        page: pageNum,
+        pages: Math.ceil(totalBookingsCount / limitNum),
+        limit: limitNum,
+      },
+      bookings,
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }

@@ -5,6 +5,7 @@ export default function AdminLayout() {
     { name: "Dashboard", path: "/admin/dashboard" },
     { name: "Users", path: "/admin/users" },
     { name: "Events", path: "/admin/events" },
+    { name: "Bookings", path: "/admin/bookings" }
   ];
 
   return <DashboardLayout role="admin" links={links} />;

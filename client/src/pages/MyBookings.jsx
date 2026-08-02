@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { useNavigate } from "react-router-dom";
+import { AuthContext } from "../store/AuthContext";
 
 export default function MyBookings() {
-  const API = import.meta.env.VITE_API;
+  const { API } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const [bookings, setBookings] = useState([]);

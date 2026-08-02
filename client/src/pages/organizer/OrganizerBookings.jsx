@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useContext } from "react";
+import { AuthContext } from "../../store/AuthContext";
 
 export default function OrganizerBookings() {
-  const API = import.meta.env.VITE_API;
+  const { API } = useContext(AuthContext);
 
   const [bookings, setBookings] = useState([]);
   const [summary, setSummary] = useState({ totalRevenue: 0, totalTicketsSold: 0 });
