@@ -558,3 +558,173 @@ export const verifyShow = async (
     });
   }
 };
+export const searchShows = async (req, res) => {
+  try {
+    // 1. Extract query params safely (accepting both 'search' or 'query')
+    const { query, search, city, genre, page = 1, limit = 10 } = req.query;
+    const searchTerm = (search || query || "").trim();
+
+    // 2. Base Filter (Always match published & verified)
+    const filter = {
+      status: "published",
+      isVerified: true,
+    };
+
+    // 3. Add text search if a search term exists
+    if (searchTerm) {
+      const safeSearch = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const searchRegex = new RegExp(safeSearch, "i");
+
+      filter.$or = [
+        { name: searchRegex },
+        { description: searchRegex },
+        { genre: searchRegex },
+        { "venue.name": searchRegex },
+        { "venue.city": searchRegex },
+        { tags: searchRegex },
+        { "artists.name": searchRegex }, // Matches artist name inside array
+      ];
+    }
+
+    // 4. Add City filter if present
+    if (city && city.trim()) {
+      const safeCity = city.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      filter["venue.city"] = new RegExp(safeCity, "i");
+    }
+
+    // 5. Add Genre filter if present
+    if (genre && genre.trim()) {
+      filter.genre = genre.trim();
+    }
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, parseInt(limit, 10) || 10);
+
+    // 6. Execute Queries
+    const [shows, totalShows] = await Promise.all([
+      Show.find(filter)
+        .populate("organizerId", "name email profileImage")
+        .sort({ date: 1, createdAt: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum),
+      Show.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      totalShows,
+      currentPage: pageNum,
+      totalPages: Math.ceil(totalShows / limitNum),
+      shows,
+    });
+  } catch (error) {
+    console.error("Search shows error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to search shows",
+      error: error.message,
+    });
+  }
+};
+
+export const getRecommendedShows = async (req, res) => {
+  try {
+    const userId = req.user._id || req.user.userId;
+
+    const now = new Date();
+    const baseQuery = {
+      status: "published",
+      isVerified: true,
+      date: { $gte: now },
+      bookingDeadline: { $gte: now } // 👈 Ensures deadline hasn't passed
+    };
+
+    // 1. Fetch user's previous bookings
+    const userBookings = await Booking.find({ userId }).populate("showId");
+
+    const pastShows = userBookings
+      .map((b) => b.showId)
+      .filter((show) => show != null && show._id);
+
+    // Convert ObjectIds to Strings for safe matching
+    const bookedShowIds = pastShows.map((s) => s._id.toString());
+
+    // If no past bookings exist, return trending shows directly
+    if (pastShows.length === 0) {
+      const trendingShows = await Show.find(baseQuery)
+        .sort({ views: -1, createdAt: -1 })
+        .limit(8);
+
+      return res.status(200).json({
+        success: true,
+        type: "trending",
+        shows: trendingShows,
+      });
+    }
+
+    // 2. Extract unique preferred genres and cities
+    const likedGenres = [
+      ...new Set(pastShows.map((s) => s.genre).filter(Boolean)),
+    ];
+    const likedCities = [
+      ...new Set(pastShows.map((s) => s.venue?.city).filter(Boolean)),
+    ];
+
+    const unbookedBaseQuery = {
+      ...baseQuery,
+      _id: { $nin: bookedShowIds },
+    };
+
+    // 3. Tier 1: Preferred Genre + Preferred City
+    let recommendedShows = await Show.find({
+      ...unbookedBaseQuery,
+      genre: { $in: likedGenres },
+      "venue.city": { $in: likedCities },
+    })
+      .sort({ date: 1 })
+      .limit(8);
+
+    // 4. Tier 2: Preferred Genre in Other Cities (Only fetch if Tier 1 < 8)
+    if (recommendedShows.length < 8) {
+      const existingIds = [
+        ...bookedShowIds,
+        ...recommendedShows.map((s) => s._id.toString()),
+      ];
+
+      const tier2Shows = await Show.find({
+        ...baseQuery,
+        _id: { $nin: existingIds },
+        genre: { $in: likedGenres }, // 👈 Strictly keeps to preferred genres
+      })
+        .sort({ date: 1 })
+        .limit(8 - recommendedShows.length);
+
+      recommendedShows = [...recommendedShows, ...tier2Shows];
+    }
+
+    // 5. Fallback ONLY if ZERO personalized shows were found at all
+    let responseType = "personalized";
+    if (recommendedShows.length === 0) {
+      recommendedShows = await Show.find({
+        ...baseQuery,
+        _id: { $nin: bookedShowIds },
+      })
+        .sort({ views: -1, createdAt: -1 })
+        .limit(8);
+
+      responseType = "trending";
+    }
+
+    return res.status(200).json({
+      success: true,
+      type: responseType,
+      shows: recommendedShows,
+    });
+  } catch (error) {
+    console.error("Error fetching recommendations:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch recommendations",
+    });
+  }
+};

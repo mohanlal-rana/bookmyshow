@@ -1,6 +1,7 @@
-import { useEffect, useState, useContext } from "react";
+import { useEffect, useState, useContext, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../store/AuthContext";
+import RecommendedShows from "./RecommendedShows.jsx";
 
 export default function Home() {
   const { API } = useContext(AuthContext);
@@ -12,33 +13,54 @@ export default function Home() {
   const [genre, setGenre] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const fetchShows = async () => {
-    setLoading(true);
-    try {
-      // Build query string dynamically from filter controls
-      const queryParams = new URLSearchParams();
-      if (search) queryParams.append("search", search);
-      if (city) queryParams.append("city", city);
-      if (genre) queryParams.append("genre", genre);
+  // Fetch shows dynamically with query params
+  const fetchShows = useCallback(
+    async (searchTerm = search, cityTerm = city, genreTerm = genre) => {
+      setLoading(true);
+      try {
+        const queryParams = new URLSearchParams();
+        if (searchTerm.trim()) queryParams.append("search", searchTerm.trim());
+        if (cityTerm.trim()) queryParams.append("city", cityTerm.trim());
+        if (genreTerm.trim()) queryParams.append("genre", genreTerm.trim());
 
-      const res = await fetch(`${API}/api/shows`);
-      const data = await res.json();
+        const queryString = queryParams.toString();
+        const url = `${API}/api/shows/search${queryString ? `?${queryString}` : ""}`;
 
-      setShows(data.shows || []);
-    } catch (err) {
-      console.error("Failed to fetch shows:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+        const res = await fetch(url);
+        const data = await res.json();
 
+        if (res.ok && data.success) {
+          setShows(data.shows || []);
+        } else {
+          setShows(data.shows || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch shows:", err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [API]
+  );
+
+  // Debounce search & city inputs for real-time filtering as user types
   useEffect(() => {
-    fetchShows();
-  }, []);
+    const timer = setTimeout(() => {
+      fetchShows(search, city, genre);
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [search, city, genre, fetchShows]);
 
   const handleSearch = (e) => {
     e.preventDefault();
-    fetchShows();
+    fetchShows(search, city, genre);
+  };
+
+  const handleClearFilters = () => {
+    setSearch("");
+    setCity("");
+    setGenre("");
   };
 
   return (
@@ -55,24 +77,24 @@ export default function Home() {
         {/* SEARCH FORM */}
         <form
           onSubmit={handleSearch}
-          className="mt-8 flex flex-wrap justify-center gap-3"
+          className="mt-8 flex flex-wrap justify-center items-center gap-3 max-w-4xl mx-auto"
         >
           <input
-            className="px-4 py-2 rounded-lg text-black outline-none w-52 shadow-sm focus:ring-2 focus:ring-[#34908B]"
-            placeholder="Search shows..."
+            className="px-4 py-2 rounded-lg text-black outline-none w-full sm:w-52 shadow-sm focus:ring-2 focus:ring-[#34908B]"
+            placeholder="Search shows or artists..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
 
           <input
-            className="px-4 py-2 rounded-lg text-black outline-none w-40 shadow-sm focus:ring-2 focus:ring-[#34908B]"
+            className="px-4 py-2 rounded-lg text-black outline-none w-full sm:w-40 shadow-sm focus:ring-2 focus:ring-[#34908B]"
             placeholder="City"
             value={city}
             onChange={(e) => setCity(e.target.value)}
           />
 
           <select
-            className="px-4 py-2 rounded-lg text-black outline-none w-40 shadow-sm focus:ring-2 focus:ring-[#34908B] bg-white"
+            className="px-4 py-2 rounded-lg text-black outline-none w-full sm:w-40 shadow-sm focus:ring-2 focus:ring-[#34908B] bg-white cursor-pointer"
             value={genre}
             onChange={(e) => setGenre(e.target.value)}
           >
@@ -93,22 +115,53 @@ export default function Home() {
           >
             Search
           </button>
+
+          {(search || city || genre) && (
+            <button
+              type="button"
+              onClick={handleClearFilters}
+              className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg font-medium transition text-sm backdrop-blur-sm"
+            >
+              Clear
+            </button>
+          )}
         </form>
       </div>
+{/* Recommended Shows Section */}
 
+<RecommendedShows/>
       {/* SHOWS SECTION */}
       <div className="px-6 py-10 max-w-7xl mx-auto">
-        <h2 className="text-2xl font-bold text-[#34908B] mb-6">
-          Popular Shows
-        </h2>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-[#34908B]">
+            {search || city || genre ? "Search Results" : "Popular Shows"}
+          </h2>
+          {!loading && (
+            <span className="text-sm font-semibold text-[#184e4a]">
+              {shows.length} {shows.length === 1 ? "show" : "shows"} found
+            </span>
+          )}
+        </div>
 
         {loading ? (
-          <div className="text-center py-12 text-[#34908B] font-semibold text-lg">
+          <div className="text-center py-12 text-[#34908B] font-semibold text-lg flex justify-center items-center gap-2">
+            <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#34908B]"></span>
             Loading shows...
           </div>
         ) : shows.length === 0 ? (
-          <div className="text-center py-12 text-gray-700 font-medium">
-            No shows found matching your search.
+          <div className="text-center py-12 text-gray-700 font-medium bg-white/50 rounded-2xl border border-[#8ce0d2] max-w-md mx-auto">
+            <p className="text-lg font-bold text-[#34908B]">No shows found</p>
+            <p className="text-sm text-gray-600 mt-1">
+              Try adjusting your search terms or filters.
+            </p>
+            {(search || city || genre) && (
+              <button
+                onClick={handleClearFilters}
+                className="mt-4 text-xs font-bold text-[#34908B] hover:underline"
+              >
+                Reset Filters
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">

@@ -1,5 +1,5 @@
 import express from "express";
-import { createShow, getShows, getShowById, updateShow, deleteShow, getShowsByOrganizer, verifyShow, getShowsByAdmin, getShowByAdminId, deleteShowByAdmin, getOneShowByOrganizer } from "../controllers/showController.js";
+import { createShow, getShows, getShowById, updateShow, deleteShow, getShowsByOrganizer, verifyShow, getShowsByAdmin, getShowByAdminId, deleteShowByAdmin, getOneShowByOrganizer, searchShows, getRecommendedShows } from "../controllers/showController.js";
 import { authenticateUser, authorizeAdmin, authorizeOrganizer } from "../middlewares/authMiddleware.js";
 import validate from "../middlewares/validateMiddleware.js";
 import { showCreateSchema, showUpdateSchema } from "../validators/showValidator.js";
@@ -9,6 +9,8 @@ const router = express.Router();
 
 //public routes
 router.get("/", getShows);
+router.get("/search",searchShows); 
+router.get("/recommended", authenticateUser, getRecommendedShows); 
 router.get("/:id", getShowById);
 
 //organizer routes
