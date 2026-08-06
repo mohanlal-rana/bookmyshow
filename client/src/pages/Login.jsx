@@ -3,14 +3,14 @@ import { useNavigate } from "react-router";
 import { AuthContext } from "../store/AuthContext";
 
 export default function Login() {
-  const { API } = useContext(AuthContext);
+  const { API, loginUser } = useContext(AuthContext); // 👈 Pull loginUser from Context
   const [form, setForm] = useState({
     email: "",
     password: "",
   });
 
   const [loading, setLoading] = useState(false);
-   const negivate = useNavigate();
+  const navigate = useNavigate(); // 👈 Fixed typo: negivate -> navigate
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -31,13 +31,16 @@ export default function Login() {
       });
 
       const data = await res.json();
-      console.log(data)
 
-      if (!res.ok) throw new Error(data.message);
+      if (!res.ok) throw new Error(data.message || "Login failed");
+
+      // 👈 Update AuthContext state immediately so the app re-renders as logged in
+      if (data.user) {
+        loginUser(data.user);
+      }
 
       alert("Login successful!");
-      console.log(data);
-      negivate("/");
+      navigate("/");
     } catch (err) {
       alert(err.message);
     } finally {
@@ -55,7 +58,10 @@ export default function Login() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
             name="email"
+            type="email"
+            required
             placeholder="Email"
+            value={form.email}
             onChange={handleChange}
             className="w-full px-4 py-2 rounded-lg outline-none"
           />
@@ -63,14 +69,17 @@ export default function Login() {
           <input
             name="password"
             type="password"
+            required
             placeholder="Password"
+            value={form.password}
             onChange={handleChange}
             className="w-full px-4 py-2 rounded-lg outline-none"
           />
 
           <button
+            type="submit"
             disabled={loading}
-            className="w-full bg-[#34908B] text-white py-2 rounded-lg hover:bg-[#2f7f7a] transition"
+            className="w-full bg-[#34908B] text-white py-2 rounded-lg hover:bg-[#2f7f7a] transition font-semibold disabled:opacity-50"
           >
             {loading ? "Logging in..." : "Login"}
           </button>
