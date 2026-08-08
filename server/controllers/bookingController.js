@@ -1,7 +1,243 @@
 import Booking from "../models/bookingModel.js";
 import Show from "../models/showModel.js";
+import Payment from "../models/paymentModel.js";
 import mongoose from "mongoose";
 import QRCode from "qrcode";
+import crypto from "crypto";
+
+// Credentials (eSewa UAT Test Keys)
+const ESEWA_SECRET_KEY = process.env.ESEWA_SECRET_KEY || "8gBm/:&EnhH.1/q";
+const ESEWA_PRODUCT_CODE = process.env.ESEWA_PRODUCT_CODE || "EPAYTEST";
+const ESEWA_GATEWAY_URL = "https://rc-epay.esewa.com.np/api/epay/main/v2/form";
+const ESEWA_STATUS_CHECK_URL = "https://rc.esewa.com.np/api/epay/transaction/status/";
+
+// Helper: HMAC SHA256 Signature
+const generateEsewaSignature = (secretKey, totalAmount, transactionUuid, productCode) => {
+  const dataString = `total_amount=${totalAmount},transaction_uuid=${transactionUuid},product_code=${productCode}`;
+  return crypto.createHmac("sha256", secretKey).update(dataString).digest("base64");
+};
+
+// ===============================
+// 1. INITIATE ESEWA PAYMENT
+// ===============================
+export const initiateEsewaPayment = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+      return res.status(400).json({ success: false, message: "Invalid Booking ID." });
+    }
+
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Booking not found." });
+    }
+
+    if (booking.paymentStatus === "paid") {
+      return res.status(400).json({ success: false, message: "Booking is already paid." });
+    }
+
+    const totalAmount = booking.totalAmount;
+    const transactionUuid = `${booking._id}-${Date.now()}`;
+
+    const signature = generateEsewaSignature(
+      ESEWA_SECRET_KEY,
+      totalAmount,
+      transactionUuid,
+      ESEWA_PRODUCT_CODE
+    );
+
+    // Create a pending Payment record
+    await Payment.create({
+      bookingId: booking._id,
+      userId: booking.userId,
+      paymentMethod: "esewa",
+      amount: totalAmount,
+      status: "pending",
+      transactionUuid: transactionUuid,
+    });
+
+    const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+
+    const esewaFormData = {
+      amount: String(totalAmount),
+      tax_amount: "0",
+      total_amount: String(totalAmount),
+      transaction_uuid: transactionUuid,
+      product_code: ESEWA_PRODUCT_CODE,
+      product_service_charge: "0",
+      product_delivery_charge: "0",
+      success_url: `${clientUrl}/payment/success`,
+      failure_url: `${clientUrl}/payment/failure`,
+      signed_field_names: "total_amount,transaction_uuid,product_code",
+      signature: signature,
+      action_url: ESEWA_GATEWAY_URL,
+    };
+
+    return res.status(200).json({
+      success: true,
+      esewaFormData,
+    });
+  } catch (error) {
+    console.error("🔴 Error in initiateEsewaPayment:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ===============================
+// 2. VERIFY ESEWA PAYMENT & GENERATE TICKETS
+// ===============================
+export const verifyEsewaPayment = async (req, res) => {
+  let session = null;
+
+  try {
+    const { data } = req.body;
+    if (!data) {
+      return res.status(400).json({ success: false, message: "Missing payment token data." });
+    }
+
+    // 1. Decode Base64 string from eSewa
+    const decodedString = Buffer.from(data, "base64").toString("utf-8");
+    const decoded = JSON.parse(decodedString);
+
+    if (decoded.status !== "COMPLETE") {
+      // Mark pending payment record as failed
+      await Payment.findOneAndUpdate(
+        { transactionUuid: decoded.transaction_uuid },
+        { status: "failed", rawGatewayResponse: decoded }
+      );
+      return res.status(400).json({ success: false, message: "Payment was not completed." });
+    }
+
+    // 2. HMAC Signature Check
+    const fields = decoded.signed_field_names.split(",");
+    const message = fields.map((field) => `${field}=${decoded[field]}`).join(",");
+    const expectedSignature = crypto
+      .createHmac("sha256", String(ESEWA_SECRET_KEY))
+      .update(message)
+      .digest("base64");
+
+    if (decoded.signature !== expectedSignature) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment signature verification failed. Tampering detected.",
+      });
+    }
+
+    // Extract booking ID
+    const bookingId = decoded.transaction_uuid.split("-")[0];
+    if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+      return res.status(400).json({ success: false, message: "Invalid transaction reference." });
+    }
+
+    // 3. Status Check with eSewa servers
+    const statusCheckUrl = `${ESEWA_STATUS_CHECK_URL}?product_code=${decoded.product_code}&total_amount=${decoded.total_amount}&transaction_uuid=${decoded.transaction_uuid}`;
+    const statusRes = await fetch(statusCheckUrl);
+    const statusData = await statusRes.json();
+
+    if (statusData.status !== "COMPLETE") {
+      await Payment.findOneAndUpdate(
+        { transactionUuid: decoded.transaction_uuid },
+        { status: "failed", rawGatewayResponse: statusData }
+      );
+      return res.status(400).json({ success: false, message: "Transaction verification with eSewa failed." });
+    }
+
+    // Handle DB Session
+    const topologyType = mongoose.connection.getClient().topology?.description?.type;
+    const isReplicaSet = topologyType && topologyType !== "Single";
+
+    if (isReplicaSet) {
+      session = await mongoose.startSession();
+      session.startTransaction();
+    }
+
+    const booking = await Booking.findById(bookingId).session(session || null);
+    if (!booking) {
+      if (session) await session.abortTransaction();
+      return res.status(404).json({ success: false, message: "Booking record not found." });
+    }
+
+    // Idempotency check
+    if (booking.paymentStatus === "paid") {
+      if (session) await session.abortTransaction();
+      return res.status(200).json({ success: true, message: "Already verified.", booking });
+    }
+
+    // 4. Update Payment Document to Completed
+    await Payment.findOneAndUpdate(
+      { transactionUuid: decoded.transaction_uuid },
+      {
+        status: "completed",
+        transactionCode: decoded.transaction_code,
+        rawGatewayResponse: decoded,
+      },
+      { session: session || null }
+    );
+
+    // 5. Atomic Show inventory update
+    const updatedShow = await Show.findOneAndUpdate(
+      {
+        _id: booking.showId,
+        availableTickets: { $gte: booking.totalTickets },
+      },
+      {
+        $inc: {
+          availableTickets: -booking.totalTickets,
+          soldTickets: booking.totalTickets,
+        },
+      },
+      { new: true, session: session || null }
+    );
+
+    if (!updatedShow) {
+      if (session) await session.abortTransaction();
+      return res.status(400).json({ success: false, message: "Tickets sold out or unavailable." });
+    }
+
+    // 6. Generate Tickets and QR Codes
+    const ticketPromises = Array.from({ length: booking.totalTickets }, async () => {
+      const ticketId = new mongoose.Types.ObjectId().toString();
+      const qrPayload = JSON.stringify({
+        bookingId: booking._id,
+        ticketId,
+        showId: booking.showId,
+      });
+
+      const qrCode = await QRCode.toDataURL(qrPayload);
+
+      return {
+        ticketId,
+        price: updatedShow.price,
+        qrCode,
+        isCheckedIn: false,
+      };
+    });
+
+    const tickets = await Promise.all(ticketPromises);
+
+    booking.tickets = tickets;
+    booking.paymentStatus = "paid";
+    booking.bookingStatus = "confirmed";
+    booking.expireAt = undefined;
+
+    await booking.save({ session: session || null });
+
+    if (session) await session.commitTransaction();
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment verified successfully and QR tickets created.",
+      booking,
+    });
+  } catch (error) {
+    if (session && session.inTransaction()) await session.abortTransaction();
+    console.error("🔴 Error in verifyEsewaPayment:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  } finally {
+    if (session) await session.endSession();
+  }
+};
 
 // ===============================
 // 🎫 CREATE BOOKING
@@ -68,131 +304,6 @@ export const createBooking = async (req, res) => {
 };
 
 // ===============================
-// 💳 MOCK PAYMENT SUCCESS (Atomic Updates)
-// ===============================
-export const mockPaymentSuccess = async (req, res) => {
-  let session = null;
-
-  try {
-    const { bookingId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(bookingId)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Invalid Booking ID." 
-      });
-    }
-
-    // Safely check replica set status
-    const topologyType = mongoose.connection.getClient().topology?.description?.type;
-    const isReplicaSet = topologyType && topologyType !== "Single";
-
-    if (isReplicaSet) {
-      session = await mongoose.startSession();
-      session.startTransaction();
-    }
-
-    // 1. Fetch Booking
-    const booking = await Booking.findById(bookingId).session(session || null);
-
-    if (!booking) {
-      if (session) await session.abortTransaction();
-      return res.status(404).json({ 
-        success: false, 
-        message: "Booking not found." 
-      });
-    }
-
-    if (booking.paymentStatus === "paid") {
-      if (session) await session.abortTransaction();
-      return res.status(400).json({ 
-        success: false, 
-        message: "Booking is already paid." 
-      });
-    }
-
-    // 2. Decrement Show availability atomically
-    const updatedShow = await Show.findOneAndUpdate(
-      {
-        _id: booking.showId,
-        availableTickets: { $gte: booking.totalTickets },
-      },
-      {
-        $inc: {
-          availableTickets: -booking.totalTickets,
-          soldTickets: booking.totalTickets,
-        },
-      },
-      { new: true, session: session || null }
-    );
-
-    if (!updatedShow) {
-      if (session) await session.abortTransaction();
-      return res.status(400).json({
-        success: false,
-        message: "Tickets sold out or unavailable.",
-      });
-    }
-
-    // 3. Generate Ticket IDs and QR Codes
-    const ticketPromises = Array.from({ length: booking.totalTickets }, async () => {
-      const ticketId = new mongoose.Types.ObjectId().toString();
-      
-      // QR Payload format matches scan ticket expectations
-      const qrPayload = JSON.stringify({
-        bookingId: booking._id,
-        ticketId,
-        showId: booking.showId,
-      });
-
-      const qrCode = await QRCode.toDataURL(qrPayload);
-
-      return {
-        ticketId,
-        price: updatedShow.price,
-        qrCode,
-        isCheckedIn: false,
-      };
-    });
-
-    const tickets = await Promise.all(ticketPromises);
-
-    // 4. Update and save booking
-    booking.tickets = tickets;
-    booking.paymentStatus = "paid";
-    booking.bookingStatus = "confirmed";
-
-    await booking.save({ session: session || null });
-
-    // 5. Commit transaction if active
-    if (session) {
-      await session.commitTransaction();
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Payment successful and tickets generated.",
-      booking,
-    });
-  } catch (error) {
-    // Only abort if session exists and is still active
-    if (session && session.inTransaction()) {
-      await session.abortTransaction();
-    }
-    console.error("🔴 Error in mockPaymentSuccess:", error);
-    return res.status(500).json({ 
-      success: false, 
-      message: error.message || "Internal server error" 
-    });
-  } finally {
-    // Always end the session safely
-    if (session) {
-      await session.endSession();
-    }
-  }
-};
-
-// ===============================
 // 📦 GET ORGANIZER BOOKINGS & ANALYTICS
 // ===============================
 export const getOrganizerBookings = async (req, res) => {
@@ -245,7 +356,6 @@ export const getOrganizerBookings = async (req, res) => {
 // Standard helper queries (Lean optimized)
 export const getUserBookings = async (req, res) => {
   try {
-    // Extract userId attached by your auth middleware
     const userId = req.user?._id || req.user?.id;
 
     if (!userId) {
@@ -255,10 +365,13 @@ export const getUserBookings = async (req, res) => {
       });
     }
 
-    // Filter bookings matching this specific userId
-    const bookings = await Booking.find({ userId })
-      .populate("showId", "name date venue price bannerImage")
-      .sort({ createdAt: -1 }) // Sort newest first
+    // Only fetch bookings where paymentStatus is "paid"
+    const bookings = await Booking.find({ 
+      userId, 
+      paymentStatus: "paid" 
+    })
+      .populate("showId", "name title date venue price bannerImage")
+      .sort({ createdAt: -1 })
       .lean();
 
     return res.status(200).json({
@@ -270,7 +383,6 @@ export const getUserBookings = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-
 export const getBookingById = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id)

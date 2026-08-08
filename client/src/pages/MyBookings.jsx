@@ -54,7 +54,7 @@ export default function MyBookings() {
       <div className="min-h-screen bg-[#FDF4AF] flex items-center justify-center p-6">
         <div className="text-xl font-semibold text-[#34908B] flex items-center gap-3">
           <span className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#34908B]"></span>
-          Loading your bookings...
+          Loading your tickets...
         </div>
       </div>
     );
@@ -64,7 +64,7 @@ export default function MyBookings() {
     return (
       <div className="min-h-screen bg-[#FDF4AF] p-6 flex items-center justify-center">
         <div className="bg-white text-red-600 border border-red-200 rounded-2xl p-8 max-w-md text-center shadow-lg">
-          <h2 className="text-xl font-bold mb-2">Error Loading Bookings</h2>
+          <h2 className="text-xl font-bold mb-2">Error Loading Tickets</h2>
           <p className="text-sm text-gray-600 mb-6">{error}</p>
           <button
             onClick={fetchMyBookings}
@@ -83,10 +83,10 @@ export default function MyBookings() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
           <div>
             <h1 className="text-3xl font-extrabold text-[#34908B]">
-              My Bookings
+              My Tickets
             </h1>
             <p className="text-sm text-gray-600 mt-1">
-              View your tickets and event passes
+              View your confirmed event tickets and QR passes
             </p>
           </div>
           <button
@@ -100,9 +100,9 @@ export default function MyBookings() {
         {bookings.length === 0 ? (
           <div className="bg-white rounded-2xl p-10 text-center shadow-md border border-[#8ce0d2]">
             <div className="text-5xl mb-4">🎟️</div>
-            <h3 className="text-xl font-bold text-gray-800">No Bookings Found</h3>
+            <h3 className="text-xl font-bold text-gray-800">No Tickets Found</h3>
             <p className="text-gray-500 text-sm mt-1 mb-6">
-              You haven't booked any event tickets yet.
+              You haven't completed any ticket purchases yet.
             </p>
             <button
               onClick={() => navigate("/")}
@@ -115,7 +115,6 @@ export default function MyBookings() {
           <div className="space-y-6">
             {bookings.map((booking) => {
               const show = booking.showId || {};
-              const isPaid = booking.paymentStatus === "paid";
 
               return (
                 <div
@@ -126,7 +125,7 @@ export default function MyBookings() {
                   <div className="bg-[#A5E9DD]/20 border-b border-[#8ce0d2] p-4 sm:p-5 flex flex-wrap justify-between items-center gap-3">
                     <div>
                       <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block">
-                        Booking ID
+                        Booking Ref
                       </span>
                       <span className="text-sm font-mono font-bold text-gray-700">
                         #{booking._id}
@@ -134,14 +133,8 @@ export default function MyBookings() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <span
-                        className={`text-xs font-bold px-3 py-1 rounded-full capitalize ${
-                          isPaid
-                            ? "bg-green-100 text-green-700 border border-green-300"
-                            : "bg-yellow-100 text-yellow-700 border border-yellow-300"
-                        }`}
-                      >
-                        {booking.bookingStatus} • {booking.paymentStatus}
+                      <span className="text-xs font-bold px-3 py-1 rounded-full capitalize bg-green-100 text-green-700 border border-green-300">
+                        Confirmed • Paid
                       </span>
                       <span className="text-xs text-gray-500 font-medium">
                         {formatDate(booking.createdAt)}
@@ -152,7 +145,6 @@ export default function MyBookings() {
                   {/* Body */}
                   <div className="p-5 sm:p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="md:col-span-2 space-y-3">
-                      {/* Clickable Title -> Redirect to EventDetail */}
                       <h2
                         onClick={() => navigate(`/event/${show._id}`)}
                         className="text-xl font-bold text-[#34908B] cursor-pointer hover:underline inline-block"
@@ -196,19 +188,12 @@ export default function MyBookings() {
                         </div>
                       </div>
 
-                      {/* Redirect to TicketDetails page */}
-                      {isPaid && booking.tickets?.length > 0 ? (
-                        <button
-                          onClick={() => navigate(`/booking/tickets/${booking._id}`)}
-                          className="w-full bg-[#34908B] text-white text-sm font-semibold py-2.5 rounded-lg hover:bg-[#2b7873] transition shadow-sm flex items-center justify-center gap-2"
-                        >
-                          <span>🎟️</span> View & Download QR
-                        </button>
-                      ) : (
-                        <div className="text-xs text-center text-amber-700 font-medium bg-amber-50 p-2 rounded-lg border border-amber-200">
-                          Payment pending
-                        </div>
-                      )}
+                      <button
+                        onClick={() => navigate(`/booking/tickets/${booking._id}`)}
+                        className="w-full bg-[#34908B] text-white text-sm font-semibold py-2.5 rounded-lg hover:bg-[#2b7873] transition shadow-sm flex items-center justify-center gap-2"
+                      >
+                        <span>🎟️</span> View & Download QR
+                      </button>
                     </div>
                   </div>
                 </div>

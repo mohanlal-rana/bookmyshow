@@ -4,10 +4,11 @@ import {
   getBookingById,
   cancelBooking,
   deleteBooking,
-  mockPaymentSuccess,
   getOrganizerBookings,
   getUserBookings,
   getAdminBookings,
+  initiateEsewaPayment,
+  verifyEsewaPayment,
 } from "../controllers/bookingController.js";
 import { authenticateUser, authorizeAdmin, authorizeOrganizer } from "../middlewares/authMiddleware.js";
 
@@ -15,10 +16,8 @@ const router = express.Router();
 
 // CREATE
 router.post("/",authenticateUser,createBooking);
-
-//make payment for booking (mock)
-
-router.post("/mock-pay/:bookingId", authenticateUser, mockPaymentSuccess);
+router.post("/esewa-initiate/:bookingId", authenticateUser, initiateEsewaPayment);
+router.post("/esewa-verify", authenticateUser, verifyEsewaPayment);
 
 // READ ALL
 router.get("/",authenticateUser ,getUserBookings);

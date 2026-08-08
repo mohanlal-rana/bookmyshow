@@ -1,6 +1,6 @@
 import Header from "./components/Header";
 import Home from "./pages/Home";
-import { BrowserRouter, Routes, Route, Navigate} from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 import AdminLayout from "./components/AdminLayout";
@@ -17,6 +17,8 @@ import EditEvent from "./pages/organizer/EditEvent";
 import UserDetail from "./pages/admin/UserDetail";
 import EventDetail from "./pages/EventDetail";
 import MakePayment from "./pages/MakePayment";
+import PaymentSuccess from "./pages/PaymentSuccess"; // Import Payment Success handler
+import PaymentFailure from "./pages/PaymentFailure"; // Import Payment Failure handler
 import MyBookings from "./pages/MyBookings";
 import TicketDetails from "./pages/TicketDetails";
 import OrganizerBookings from "./pages/organizer/OrganizerBookings";
@@ -29,47 +31,51 @@ import SearchTicket from "./pages/checker/SearchTicket";
 
 export default function App() {
   return (
-<BrowserRouter>
-<Header />
-  <Routes>
-    <Route path="/" element={<Home />} />
-    <Route path="/signup" element={<Signup/>}/>
-    <Route path="/login" element={<Login/>}/>
-    <Route path="/event/:id" element={<EventDetail/>}/>
-    <Route path="/booking/payment/:id" element={<MakePayment/>}/>
-    <Route path="/my-bookings" element={<MyBookings/>}/>
-    <Route path="/booking/tickets/:bookingId" element={<TicketDetails />} />
-    <Route path="/upgrade-to-organizer" element={<UpgradeToOrganizer/>} />
-          // admin Routes
-      <Route path='/admin' element={<AdminLayout/>}> 
-        <Route index element={<Navigate to="dashboard" replace />} />
-        <Route path='dashboard' element={<AdminDashboard/>}/>
-        <Route path='users' element={<UserManagement/>}/>
-        <Route path='users/:id' element={<UserDetail/>}/>
-        <Route path='events' element={<EventManagement/>}/>
-        <Route path='events/:id' element={<EventManagementDetails/>}/>
-        <Route path='bookings' element={<AdminBooking/>}/>
-      </Route> 
+    <BrowserRouter>
+      <Header />
+      <Routes>
+        {/* Public / User Routes */}
+        <Route path="/" element={<Home />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/event/:id" element={<EventDetail />} />
+        <Route path="/booking/payment/:id" element={<MakePayment />} />
+        <Route path="/payment/success" element={<PaymentSuccess />} />
+        <Route path="/payment/failure" element={<PaymentFailure />} />
+        <Route path="/my-bookings" element={<MyBookings />} />
+        <Route path="/booking/tickets/:bookingId" element={<TicketDetails />} />
+        <Route path="/upgrade-to-organizer" element={<UpgradeToOrganizer />} />
 
-      // owner Routes
-      <Route path='/organizer' element={<OrganizerLayout/>}> 
-        <Route index element={<Navigate to="dashboard" replace />} />
-        <Route path='dashboard' element={<OrganizerDashboard/>}/>
-        <Route path='events' element={<OrganizerEventManagement/>}/>
-        <Route path='events/add' element={<AddEvent/>}/>
-        <Route path='events/:id' element={<OrganizerEventDetail/>}/>
-        <Route path='events/edit/:id' element={<EditEvent/>}/>
-        <Route path='bookings' element={<OrganizerBookings/>}/>
-      </Route>
+        {/* Admin Routes */}
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<AdminDashboard />} />
+          <Route path="users" element={<UserManagement />} />
+          <Route path="users/:id" element={<UserDetail />} />
+          <Route path="events" element={<EventManagement />} />
+          <Route path="events/:id" element={<EventManagementDetails />} />
+          <Route path="bookings" element={<AdminBooking />} />
+        </Route>
 
-      //checker routes
-      <Route path='/checker' element={<CheckerLayout/>}> 
-        <Route index element={<Navigate to="dashboard" replace />} />
-        <Route path='dashboard' element={<CheckerDashboard/>}/>
-        <Route path='scan' element={<TicketScanner/>}/>
-        <Route path='lookup' element={<SearchTicket/>}/>
-      </Route>
-  </Routes>
-</BrowserRouter>
-  )
+        {/* Organizer Routes */}
+        <Route path="/organizer" element={<OrganizerLayout />}>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<OrganizerDashboard />} />
+          <Route path="events" element={<OrganizerEventManagement />} />
+          <Route path="events/add" element={<AddEvent />} />
+          <Route path="events/:id" element={<OrganizerEventDetail />} />
+          <Route path="events/edit/:id" element={<EditEvent />} />
+          <Route path="bookings" element={<OrganizerBookings />} />
+        </Route>
+
+        {/* Checker Routes */}
+        <Route path="/checker" element={<CheckerLayout />}>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<CheckerDashboard />} />
+          <Route path="scan" element={<TicketScanner />} />
+          <Route path="lookup" element={<SearchTicket />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  );
 }
