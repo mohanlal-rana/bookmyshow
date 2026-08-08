@@ -9,6 +9,7 @@ import {
   getAdminBookings,
   initiateEsewaPayment,
   verifyEsewaPayment,
+  refundBooking,
 } from "../controllers/bookingController.js";
 import { authenticateUser, authorizeAdmin, authorizeOrganizer } from "../middlewares/authMiddleware.js";
 
@@ -26,7 +27,7 @@ router.get("/",authenticateUser ,getUserBookings);
 router.get("/:id",authenticateUser, getBookingById);
 
 // CANCEL
-router.put("/cancel/:id", authenticateUser, cancelBooking);
+router.put("/:id/cancel", authenticateUser, cancelBooking);
 
 // DELETE
 router.delete("/:id", authenticateUser, deleteBooking);
@@ -36,5 +37,11 @@ router.get("/organizer/bookings", authenticateUser,authorizeOrganizer, getOrgani
 
 //admin can view all bookings for all events
 router.get("/admin/bookings", authenticateUser,authorizeAdmin, getAdminBookings);
+router.put(
+  "/admin/:id/refund",
+  authenticateUser,
+  authorizeAdmin,
+  refundBooking
+);
 
 export default router;

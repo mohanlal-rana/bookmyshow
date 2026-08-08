@@ -11,11 +11,14 @@ export default function EventManagementDetails() {
   const [bookings, setBookings] = useState([]);
   const [revenueStats, setRevenueStats] = useState({
     totalRevenue: 0,
-    paidCount: 0,
-    pendingRevenue: 0,
+    confirmedRevenue: 0,
+    cancellationFeeRevenue: 0,
+    confirmedCount: 0,
+    pendingAmount: 0,
     pendingCount: 0,
-    refundedRevenue: 0,
     refundedCount: 0,
+    totalRefundedAmount: 0,
+    grossRevenue: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -57,7 +60,18 @@ export default function EventManagementDetails() {
       setShow(data.show);
       setBookings(data.bookings || []);
       if (data.revenueStats) {
-        setRevenueStats(data.revenueStats);
+        // Ensure all fields exist with defaults
+        setRevenueStats({
+          totalRevenue: data.revenueStats.totalRevenue ?? 0,
+          confirmedRevenue: data.revenueStats.confirmedRevenue ?? 0,
+          cancellationFeeRevenue: data.revenueStats.cancellationFeeRevenue ?? 0,
+          confirmedCount: data.revenueStats.confirmedCount ?? 0,
+          pendingAmount: data.revenueStats.pendingAmount ?? 0,
+          pendingCount: data.revenueStats.pendingCount ?? 0,
+          refundedCount: data.revenueStats.refundedCount ?? 0,
+          totalRefundedAmount: data.revenueStats.totalRefundedAmount ?? 0,
+          grossRevenue: data.revenueStats.grossRevenue ?? 0,
+        });
       }
     } catch (err) {
       setError(err.message);
@@ -271,7 +285,7 @@ export default function EventManagementDetails() {
         </div>
 
         <div className="p-6 md:p-8 space-y-8">
-          {/* Quick Metrics KPI Bar (Includes Total Revenue) */}
+          {/* Quick Metrics KPI Bar */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 bg-[#FDF4AF]/40 p-4 rounded-xl border border-yellow-200">
             <div>
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
@@ -321,26 +335,27 @@ export default function EventManagementDetails() {
             </div>
           </div>
 
-          {/* Financial Overview Card */}
+          {/* Financial Overview Card - Updated to use new stats */}
           <div className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-5 space-y-3">
             <h3 className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
               💰 Revenue Summary & Financial Breakdown
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs pt-1">
               <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-sm">
-                <span className="text-gray-500 block">Collected (Paid)</span>
+                <span className="text-gray-500 block">Net Revenue (Earned)</span>
                 <span className="text-lg font-extrabold text-emerald-700">
                   Rs. {revenueStats.totalRevenue.toLocaleString()}
                 </span>
-                <span className="text-[10px] text-gray-400 block mt-0.5">
-                  From {revenueStats.paidCount} paid booking(s)
-                </span>
+                <div className="text-[10px] text-gray-400 space-y-0.5 mt-1">
+                  <div>Confirmed: Rs. {revenueStats.confirmedRevenue.toLocaleString()}</div>
+                  <div>Cancellation Fees: Rs. {revenueStats.cancellationFeeRevenue.toLocaleString()}</div>
+                </div>
               </div>
 
               <div className="bg-white p-3 rounded-xl border border-amber-100 shadow-sm">
                 <span className="text-gray-500 block">Pending Payments</span>
                 <span className="text-lg font-extrabold text-amber-600">
-                  Rs. {revenueStats.pendingRevenue.toLocaleString()}
+                  Rs. {revenueStats.pendingAmount.toLocaleString()}
                 </span>
                 <span className="text-[10px] text-gray-400 block mt-0.5">
                   From {revenueStats.pendingCount} unconfirmed booking(s)
@@ -357,9 +372,16 @@ export default function EventManagementDetails() {
                 </span>
               </div>
             </div>
+
+            {/* Optional: Refunded totals info */}
+            {revenueStats.totalRefundedAmount > 0 && (
+              <div className="text-xs text-gray-500 bg-white/70 p-2 rounded-lg border border-gray-200">
+                <strong>Refunded Amount (full):</strong> Rs. {revenueStats.totalRefundedAmount.toLocaleString()} from {revenueStats.refundedCount} cancelled booking(s)
+              </div>
+            )}
           </div>
 
-          {/* Detailed Info Grid */}
+          {/* Detailed Info Grid - remains the same */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
             <div className="space-y-6">
               <div>

@@ -1,14 +1,14 @@
-import React, { useState, useEffect,useContext } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import { AuthContext } from "../../store/AuthContext";
 
 export default function AdminBooking() {
+  const { API } = useContext(AuthContext);
   const [bookings, setBookings] = useState([]);
   const [stats, setStats] = useState({});
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
   const [loading, setLoading] = useState(true);
   const [selectedBooking, setSelectedBooking] = useState(null);
-  const { API } = useContext(AuthContext);
-
+  const [refundingId, setRefundingId] = useState(null); // track refund in progress
 
   // Filters State
   const [search, setSearch] = useState("");
@@ -16,12 +16,9 @@ export default function AdminBooking() {
   const [bookingStatus, setBookingStatus] = useState("");
   const [page, setPage] = useState(1);
 
-  // Replaced Axios with native Fetch API
   const fetchBookings = async () => {
     try {
       setLoading(true);
-
-      // Build query string dynamically
       const queryParams = new URLSearchParams({
         page: page.toString(),
         search,
@@ -29,18 +26,17 @@ export default function AdminBooking() {
         bookingStatus,
       });
 
-      const response = await fetch(`${API}/api/bookings/admin/bookings?${queryParams.toString()}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include", 
-      });
+      const response = await fetch(
+        `${API}/api/bookings/admin/bookings?${queryParams.toString()}`,
+        {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        }
+      );
 
-      if (!response.ok) {
+      if (!response.ok)
         throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-
       const data = await response.json();
 
       if (data.success) {
@@ -65,10 +61,39 @@ export default function AdminBooking() {
     fetchBookings();
   };
 
+  // Refund handler
+  const handleRefund = async (bookingId) => {
+    if (
+      !window.confirm(
+        "Are you sure you want to refund this booking? This action is irreversible."
+      )
+    ) {
+      return;
+    }
+
+    setRefundingId(bookingId);
+    try {
+      const res = await fetch(`${API}/api/bookings/admin/${bookingId}/refund`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Refund failed.");
+
+      alert(data.message || "Refund processed successfully.");
+      setSelectedBooking(null);
+      fetchBookings();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setRefundingId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans text-slate-800">
       <div className="mx-auto max-w-7xl">
-
         {/* Metric Cards */}
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <StatCard
@@ -96,6 +121,7 @@ export default function AdminBooking() {
             value={stats.cancelledBookings || 0}
             borderClass="border-red-500"
           />
+          {/* ❌ Removed the invalid booking.refundAmount block – it belongs in the modal */}
         </div>
 
         {/* Filter Controls */}
@@ -146,7 +172,7 @@ export default function AdminBooking() {
           </select>
         </div>
 
-        {/* Bookings Table */}
+        {/* Table */}
         {loading ? (
           <div className="flex h-40 items-center justify-center text-slate-500">
             Loading bookings...
@@ -170,9 +196,14 @@ export default function AdminBooking() {
                 <tbody className="divide-y divide-slate-200">
                   {bookings.length > 0 ? (
                     bookings.map((booking) => (
-                      <tr key={booking._id} className="hover:bg-slate-50/80 transition-colors">
+                      <tr
+                        key={booking._id}
+                        className="hover:bg-slate-50/80 transition-colors"
+                      >
                         <td className="px-4 py-3 font-medium">
-                          <span className="text-slate-900">#{booking._id.slice(-6)}</span>
+                          <span className="text-slate-900">
+                            #{booking._id.slice(-6)}
+                          </span>
                           <div className="text-xs text-slate-400">
                             {booking.transactionId || "N/A"}
                           </div>
@@ -181,7 +212,9 @@ export default function AdminBooking() {
                           <div className="font-medium text-slate-800">
                             {booking.userId?.name || "Deleted User"}
                           </div>
-                          <div className="text-xs text-slate-400">{booking.userId?.email}</div>
+                          <div className="text-xs text-slate-400">
+                            {booking.userId?.email}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-medium text-slate-800">
@@ -198,10 +231,16 @@ export default function AdminBooking() {
                           Rs{booking.totalAmount}
                         </td>
                         <td className="px-4 py-3">
-                          <Badge label={booking.paymentStatus} status={booking.paymentStatus} />
+                          <Badge
+                            label={booking.paymentStatus}
+                            status={booking.paymentStatus}
+                          />
                         </td>
                         <td className="px-4 py-3">
-                          <Badge label={booking.bookingStatus} status={booking.bookingStatus} />
+                          <Badge
+                            label={booking.bookingStatus}
+                            status={booking.bookingStatus}
+                          />
                         </td>
                         <td className="px-4 py-3 text-right">
                           <button
@@ -215,7 +254,10 @@ export default function AdminBooking() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="8" className="px-4 py-8 text-center text-slate-400">
+                      <td
+                        colSpan="8"
+                        className="px-4 py-8 text-center text-slate-400"
+                      >
                         No bookings found.
                       </td>
                     </tr>
@@ -227,9 +269,10 @@ export default function AdminBooking() {
             {/* Pagination */}
             <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-xs text-slate-500">
               <span>
-                Page <strong className="text-slate-700">{pagination.page}</strong> of{" "}
-                <strong className="text-slate-700">{pagination.pages}</strong> ({pagination.total}{" "}
-                total)
+                Page{" "}
+                <strong className="text-slate-700">{pagination.page}</strong> of{" "}
+                <strong className="text-slate-700">{pagination.pages}</strong> (
+                {pagination.total} total)
               </span>
               <div className="flex gap-2">
                 <button
@@ -251,9 +294,14 @@ export default function AdminBooking() {
           </div>
         )}
 
-        {/* Ticket Modal */}
+        {/* Booking Modal with Refund Button */}
         {selectedBooking && (
-          <BookingModal booking={selectedBooking} onClose={() => setSelectedBooking(null)} />
+          <BookingModal
+            booking={selectedBooking}
+            onClose={() => setSelectedBooking(null)}
+            onRefund={handleRefund}
+            refundingId={refundingId}
+          />
         )}
       </div>
     </div>
@@ -263,8 +311,12 @@ export default function AdminBooking() {
 // Sub-components
 function StatCard({ title, value, borderClass }) {
   return (
-    <div className={`rounded-xl border-l-4 bg-white p-4 shadow-sm border border-slate-200 ${borderClass}`}>
-      <span className="text-xs font-medium uppercase tracking-wider text-slate-500">{title}</span>
+    <div
+      className={`rounded-xl border-l-4 bg-white p-4 shadow-sm border border-slate-200 ${borderClass}`}
+    >
+      <span className="text-xs font-medium uppercase tracking-wider text-slate-500">
+        {title}
+      </span>
       <div className="mt-1 text-2xl font-bold text-slate-900">{value}</div>
     </div>
   );
@@ -287,7 +339,6 @@ function Badge({ label, status }) {
         return "bg-slate-100 text-slate-600 border-slate-200";
     }
   };
-
   return (
     <span
       className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${getStyle()}`}
@@ -297,7 +348,18 @@ function Badge({ label, status }) {
   );
 }
 
-function BookingModal({ booking, onClose }) {
+// BookingModal – includes refund details and the refund button
+function BookingModal({ booking, onClose, onRefund, refundingId }) {
+  const isRefundable =
+    booking.bookingStatus === "cancelled" &&
+    booking.paymentStatus === "paid" &&
+    booking.refundStatus !== "processed" &&
+    booking.refundStatus !== "processing";
+
+  // Compute deduction and net refund (fallback if not stored)
+  const deduction = booking.deductionAmount || (booking.totalAmount * 0.2);
+  const netRefund = booking.refundAmount || (booking.totalAmount - deduction);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
       <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
@@ -318,20 +380,69 @@ function BookingModal({ booking, onClose }) {
 
         <div className="mt-4 space-y-3 text-sm text-slate-600">
           <div>
-            <strong className="text-slate-800">User:</strong> {booking.userId?.name} (
-            {booking.userId?.email})
+            <strong className="text-slate-800">User:</strong>{" "}
+            {booking.userId?.name} ({booking.userId?.email})
           </div>
           <div>
-            <strong className="text-slate-800">Show:</strong> {booking.showId?.name}
+            <strong className="text-slate-800">Show:</strong>{" "}
+            {booking.showId?.name}
           </div>
           <div>
             <strong className="text-slate-800">Organizer:</strong>{" "}
-            {booking.organizerId?.organizer?.organizationName || booking.organizerId?.name}
+            {booking.organizerId?.organizer?.organizationName ||
+              booking.organizerId?.name}
           </div>
+          <div>
+            <strong className="text-slate-800">Payment Status:</strong>{" "}
+            <Badge
+              label={booking.paymentStatus}
+              status={booking.paymentStatus}
+            />
+          </div>
+          <div>
+            <strong className="text-slate-800">Booking Status:</strong>{" "}
+            <Badge
+              label={booking.bookingStatus}
+              status={booking.bookingStatus}
+            />
+          </div>
+          {booking.refundStatus && booking.refundStatus !== "none" && (
+            <div>
+              <strong className="text-slate-800">Refund Status:</strong>{" "}
+              <Badge
+                label={booking.refundStatus}
+                status={booking.refundStatus}
+              />
+            </div>
+          )}
+
+          {/* 🔹 Refund breakdown – shown when refund has been processed or is processing */}
+          {(booking.refundStatus === "processed" || booking.refundStatus === "processing") && (
+            <>
+              <hr className="my-2 border-slate-100" />
+              <div className="space-y-1 text-sm">
+                <div>
+                  <strong className="text-slate-800">Original Amount:</strong>{" "}
+                  Rs{booking.totalAmount}
+                </div>
+                {deduction > 0 && (
+                  <div>
+                    <strong className="text-slate-800">Deduction (20%):</strong>{" "}
+                    <span className="text-red-600">- Rs{deduction.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="text-base font-bold text-emerald-600">
+                  <strong>Net Refund:</strong> Rs{netRefund.toFixed(2)}
+                </div>
+              </div>
+            </>
+          )}
 
           <hr className="my-2 border-slate-100" />
 
-          <h4 className="font-semibold text-slate-800">Tickets Breakdown ({booking.tickets.length})</h4>
+          <h4 className="font-semibold text-slate-800">
+            Tickets Breakdown ({booking.tickets.length})
+          </h4>
           <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
             {booking.tickets.map((t, idx) => (
               <div
@@ -339,17 +450,25 @@ function BookingModal({ booking, onClose }) {
                 className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs"
               >
                 <div>
-                  <span className="font-mono font-semibold text-slate-800">{t.ticketId}</span>
+                  <span className="font-mono font-semibold text-slate-800">
+                    {t.ticketId}
+                  </span>
                   {t.ticketType && (
                     <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-slate-700">
                       {t.ticketType}
                     </span>
                   )}
-                  {t.seatNumber && <span className="ml-2 text-slate-500">Seat: {t.seatNumber}</span>}
+                  {t.seatNumber && (
+                    <span className="ml-2 text-slate-500">
+                      Seat: {t.seatNumber}
+                    </span>
+                  )}
                 </div>
                 <div>
                   {t.isCheckedIn ? (
-                    <span className="font-medium text-emerald-600">✓ Checked In</span>
+                    <span className="font-medium text-emerald-600">
+                      ✓ Checked In
+                    </span>
                   ) : (
                     <span className="text-slate-400">Not Used</span>
                   )}
@@ -359,10 +478,20 @@ function BookingModal({ booking, onClose }) {
           </div>
         </div>
 
-        <div className="mt-6 flex justify-end">
+        <div className="mt-6 flex items-center justify-between">
+          {/* Refund Button - only if refundable */}
+          {isRefundable && (
+            <button
+              onClick={() => onRefund(booking._id)}
+              disabled={refundingId === booking._id}
+              className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
+            >
+              {refundingId === booking._id ? "Refunding..." : "Process Refund"}
+            </button>
+          )}
           <button
             onClick={onClose}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 ml-auto"
           >
             Close
           </button>

@@ -24,7 +24,13 @@ export const createShow = async (req, res) => {
 
     // --- 1. Parse JSON fields sent via FormData ---
     const venue = safeParse(req.body.venue);
-    if (!venue || typeof venue !== "object" || !venue.name || !venue.city || !venue.address) {
+    if (
+      !venue ||
+      typeof venue !== "object" ||
+      !venue.name ||
+      !venue.city ||
+      !venue.address
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid venue format. Provide name, city, and address.",
@@ -38,7 +44,10 @@ export const createShow = async (req, res) => {
     // Works with both req.file (single) and req.files (fields)
     let bannerImagePath = "";
     if (req.files?.bannerImage?.[0]) {
-      bannerImagePath = req.files.bannerImage[0].path || req.files.bannerImage[0].secure_url || "";
+      bannerImagePath =
+        req.files.bannerImage[0].path ||
+        req.files.bannerImage[0].secure_url ||
+        "";
     } else if (req.file) {
       bannerImagePath = req.file.path || req.file.secure_url || "";
     }
@@ -80,11 +89,15 @@ export const createShow = async (req, res) => {
       },
       price,
       totalTickets,
-      availableTickets: isNaN(availableTickets) ? totalTickets : availableTickets,
+      availableTickets: isNaN(availableTickets)
+        ? totalTickets
+        : availableTickets,
       maxTicketsPerUser: Number(req.body.maxTicketsPerUser) || 5,
       refundPolicy: req.body.refundPolicy || "No refund available",
       status: req.body.status || "published",
-      bookingDeadline: req.body.bookingDeadline ? new Date(req.body.bookingDeadline) : undefined,
+      bookingDeadline: req.body.bookingDeadline
+        ? new Date(req.body.bookingDeadline)
+        : undefined,
       organizerId,
     };
 
@@ -119,10 +132,7 @@ export const createShow = async (req, res) => {
     });
   }
 };
-export const getShowsByOrganizer = async (
-  req,
-  res
-) => {
+export const getShowsByOrganizer = async (req, res) => {
   try {
     const organizerId = req.user._id;
 
@@ -139,11 +149,10 @@ export const getShowsByOrganizer = async (
 
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to fetch shows for the organizer",
+      message: "Failed to fetch shows for the organizer",
     });
   }
-}
+};
 
 export const getOneShowByOrganizer = async (req, res) => {
   try {
@@ -211,18 +220,14 @@ export const getShows = async (req, res) => {
 };
 
 // ================= GET SINGLE SHOW =================
-export const getShowById = async (
-  req,
-  res
-) => {
+export const getShowById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const show = await Show.findById(id)
-      .populate(
-        "organizerId",
-        "name email profileImage"
-      );
+    const show = await Show.findById(id).populate(
+      "organizerId",
+      "name email profileImage",
+    );
 
     if (!show) {
       return res.status(404).json({
@@ -232,10 +237,7 @@ export const getShowById = async (
     }
 
     // Only allow verified & published shows
-    if (
-      !show.isVerified ||
-      show.status !== "published"
-    ) {
+    if (!show.isVerified || show.status !== "published") {
       return res.status(404).json({
         success: false,
         message: "Show not found",
@@ -258,7 +260,6 @@ export const getShowById = async (
     });
   }
 };
-
 
 // ================= UPDATE SHOW =================
 export const updateShow = async (req, res) => {
@@ -286,8 +287,13 @@ export const updateShow = async (req, res) => {
 
     // Scalars
     const scalarFields = [
-      "name", "description", "genre", "startTime", "endTime",
-      "refundPolicy", "status"
+      "name",
+      "description",
+      "genre",
+      "startTime",
+      "endTime",
+      "refundPolicy",
+      "status",
     ];
     scalarFields.forEach((field) => {
       if (req.body[field] !== undefined) updateData[field] = req.body[field];
@@ -303,7 +309,8 @@ export const updateShow = async (req, res) => {
 
     // Dates
     if (req.body.date) updateData.date = new Date(req.body.date);
-    if (req.body.bookingDeadline) updateData.bookingDeadline = new Date(req.body.bookingDeadline);
+    if (req.body.bookingDeadline)
+      updateData.bookingDeadline = new Date(req.body.bookingDeadline);
 
     // JSON fields
     const jsonFields = ["venue", "tags", "artists", "ticketTypes"];
@@ -317,7 +324,10 @@ export const updateShow = async (req, res) => {
           });
         }
         // For venue, ensure required sub‑fields exist
-        if (field === "venue" && (!parsed.name || !parsed.city || !parsed.address)) {
+        if (
+          field === "venue" &&
+          (!parsed.name || !parsed.city || !parsed.address)
+        ) {
           return res.status(400).json({
             success: false,
             message: "Venue must have name, city, and address",
@@ -337,7 +347,7 @@ export const updateShow = async (req, res) => {
     const updatedShow = await Show.findByIdAndUpdate(
       id,
       { $set: updateData },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     );
 
     res.status(200).json({
@@ -355,10 +365,7 @@ export const updateShow = async (req, res) => {
 };
 
 // ================= DELETE SHOW =================
-export const deleteShow = async (
-  req,
-  res
-) => {
+export const deleteShow = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -398,16 +405,10 @@ export const deleteShow = async (
 };
 
 // ================= GET ALL SHOWS FOR ADMIN =================
-export const getShowsByAdmin = async (
-  req,
-  res
-) => {
+export const getShowsByAdmin = async (req, res) => {
   try {
     const shows = await Show.find()
-      .populate(
-        "organizerId",
-        "name email profileImage"
-      )
+      .populate("organizerId", "name email profileImage")
       .sort({ createdAt: -1 });
 
     return res.status(200).json({
@@ -430,10 +431,9 @@ export const getShowByAdminId = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Fetch the show details
     const show = await Show.findById(id).populate(
       "organizerId",
-      "name email profileImage"
+      "name email profileImage",
     );
 
     if (!show) {
@@ -443,46 +443,89 @@ export const getShowByAdminId = async (req, res) => {
       });
     }
 
-    // Fetch all bookings for this show
     const bookings = await Booking.find({ showId: id })
       .populate("userId", "name email phone profileImage")
       .sort({ createdAt: -1 })
       .lean();
 
-    // Calculate total revenue and revenue breakdowns
+    // Revenue calculations
     const revenueStats = bookings.reduce(
       (acc, booking) => {
-        if (booking.paymentStatus === "paid") {
-          acc.totalRevenue += booking.totalAmount || 0;
-          acc.paidCount += 1;
-        } else if (booking.paymentStatus === "pending") {
-          acc.pendingRevenue += booking.totalAmount || 0;
-          acc.pendingCount += 1;
-        } else if (booking.paymentStatus === "refunded") {
-          acc.refundedRevenue += booking.totalAmount || 0;
-          acc.refundedCount += 1;
+        const {
+          paymentStatus,
+          bookingStatus,
+          refundStatus,
+          totalAmount,
+          deductionAmount,
+        } = booking;
+
+        // 1. Confirmed & paid bookings → full amount is revenue
+        if (bookingStatus === "confirmed" && paymentStatus === "paid") {
+          acc.confirmedRevenue += totalAmount || 0;
+          acc.confirmedCount += 1;
         }
+
+        // 2. Cancelled & refunded bookings → only the deduction (cancellation fee) is revenue
+        if (bookingStatus === "cancelled" && refundStatus === "processed") {
+          const fee = deductionAmount || 0;
+          acc.cancellationFeeRevenue += fee;
+          acc.refundedCount += 1;
+          acc.totalRefundedAmount += totalAmount || 0; // track full refunded amount for reporting
+        }
+
+        // 3. Pending (unpaid) – not revenue yet
+        if (paymentStatus === "pending") {
+          acc.pendingCount += 1;
+          acc.pendingAmount += totalAmount || 0;
+        }
+
+        // 4. Paid but not confirmed? (e.g., payment succeeded but booking still pending) – treat as pending or exclude?
+        // Usually should not happen, but we'll add a fallback.
+        if (
+          paymentStatus === "paid" &&
+          bookingStatus !== "confirmed" &&
+          bookingStatus !== "cancelled"
+        ) {
+          // Could be an intermediate state; we'll count as paid but not confirmed
+          acc.otherPaidAmount += totalAmount || 0;
+        }
+
         return acc;
       },
       {
-        totalRevenue: 0,
-        paidCount: 0,
-        pendingRevenue: 0,
-        pendingCount: 0,
-        refundedRevenue: 0,
+        confirmedRevenue: 0,
+        confirmedCount: 0,
+        cancellationFeeRevenue: 0,
         refundedCount: 0,
-      }
+        totalRefundedAmount: 0,
+        pendingCount: 0,
+        pendingAmount: 0,
+        otherPaidAmount: 0,
+      },
+    );
+
+    // Compute total revenue = confirmedRevenue + cancellationFeeRevenue
+    const totalRevenue =
+      revenueStats.confirmedRevenue + revenueStats.cancellationFeeRevenue;
+
+    // Also compute gross revenue (total sales before refunds) for reference
+    const grossRevenue = bookings.reduce(
+      (sum, b) => sum + (b.totalAmount || 0),
+      0,
     );
 
     return res.status(200).json({
       success: true,
       show,
       bookings,
-      revenueStats, // Sent to frontend
+      revenueStats: {
+        ...revenueStats,
+        totalRevenue, // net revenue (money earned)
+        grossRevenue, // total sales volume (optional)
+      },
     });
   } catch (error) {
     console.error("Error fetching show details:", error);
-
     return res.status(500).json({
       success: false,
       message: "Failed to fetch show details and bookings",
@@ -491,10 +534,7 @@ export const getShowByAdminId = async (req, res) => {
 };
 
 // ================= DELETE SHOW BY ADMIN =================
-export const deleteShowByAdmin = async (
-  req,
-  res
-) => {
+export const deleteShowByAdmin = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -524,10 +564,7 @@ export const deleteShowByAdmin = async (
 };
 
 // ================= VERIFY SHOW =================
-export const verifyShow = async (
-  req,
-  res
-) => {
+export const verifyShow = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -636,7 +673,7 @@ export const getRecommendedShows = async (req, res) => {
       status: "published",
       isVerified: true,
       date: { $gte: now },
-      bookingDeadline: { $gte: now } // 👈 Ensures deadline hasn't passed
+      bookingDeadline: { $gte: now }, // 👈 Ensures deadline hasn't passed
     };
 
     // 1. Fetch user's previous bookings

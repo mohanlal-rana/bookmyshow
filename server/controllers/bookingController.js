@@ -9,12 +9,61 @@ import crypto from "crypto";
 const ESEWA_SECRET_KEY = process.env.ESEWA_SECRET_KEY || "8gBm/:&EnhH.1/q";
 const ESEWA_PRODUCT_CODE = process.env.ESEWA_PRODUCT_CODE || "EPAYTEST";
 const ESEWA_GATEWAY_URL = "https://rc-epay.esewa.com.np/api/epay/main/v2/form";
-const ESEWA_STATUS_CHECK_URL = "https://rc.esewa.com.np/api/epay/transaction/status/";
+const ESEWA_STATUS_CHECK_URL =
+  "https://rc.esewa.com.np/api/epay/transaction/status/";
 
 // Helper: HMAC SHA256 Signature
-const generateEsewaSignature = (secretKey, totalAmount, transactionUuid, productCode) => {
+const generateEsewaSignature = (
+  secretKey,
+  totalAmount,
+  transactionUuid,
+  productCode,
+) => {
   const dataString = `total_amount=${totalAmount},transaction_uuid=${transactionUuid},product_code=${productCode}`;
-  return crypto.createHmac("sha256", secretKey).update(dataString).digest("base64");
+  return crypto
+    .createHmac("sha256", secretKey)
+    .update(dataString)
+    .digest("base64");
+};
+
+// ============================================================
+//  HELPER: Recalculate show ticket counts from confirmed bookings
+// ============================================================
+export const updateShowTicketCounts = async (showId) => {
+  try {
+    const result = await Booking.aggregate([
+      {
+        $match: {
+          showId: new mongoose.Types.ObjectId(showId),
+          bookingStatus: "confirmed",
+          paymentStatus: "paid",
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalSold: { $sum: "$totalTickets" },
+        },
+      },
+    ]);
+
+    const soldTickets = result.length > 0 ? result[0].totalSold : 0;
+
+    const show = await Show.findById(showId);
+    if (!show) {
+      console.error(`Show ${showId} not found while updating ticket counts.`);
+      return null;
+    }
+
+    show.soldTickets = soldTickets;
+    show.availableTickets = show.totalTickets - soldTickets;
+    await show.save();
+
+    return { soldTickets, availableTickets: show.availableTickets };
+  } catch (error) {
+    console.error("Error updating show ticket counts:", error);
+    throw error;
+  }
 };
 
 // ===============================
@@ -25,16 +74,22 @@ export const initiateEsewaPayment = async (req, res) => {
     const { bookingId } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(bookingId)) {
-      return res.status(400).json({ success: false, message: "Invalid Booking ID." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid Booking ID." });
     }
 
     const booking = await Booking.findById(bookingId);
     if (!booking) {
-      return res.status(404).json({ success: false, message: "Booking not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Booking not found." });
     }
 
     if (booking.paymentStatus === "paid") {
-      return res.status(400).json({ success: false, message: "Booking is already paid." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Booking is already paid." });
     }
 
     const totalAmount = booking.totalAmount;
@@ -44,7 +99,7 @@ export const initiateEsewaPayment = async (req, res) => {
       ESEWA_SECRET_KEY,
       totalAmount,
       transactionUuid,
-      ESEWA_PRODUCT_CODE
+      ESEWA_PRODUCT_CODE,
     );
 
     // Create a pending Payment record
@@ -93,7 +148,9 @@ export const verifyEsewaPayment = async (req, res) => {
   try {
     const { data } = req.body;
     if (!data) {
-      return res.status(400).json({ success: false, message: "Missing payment token data." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing payment token data." });
     }
 
     // 1. Decode Base64 string from eSewa
@@ -104,14 +161,18 @@ export const verifyEsewaPayment = async (req, res) => {
       // Mark pending payment record as failed
       await Payment.findOneAndUpdate(
         { transactionUuid: decoded.transaction_uuid },
-        { status: "failed", rawGatewayResponse: decoded }
+        { status: "failed", rawGatewayResponse: decoded },
       );
-      return res.status(400).json({ success: false, message: "Payment was not completed." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Payment was not completed." });
     }
 
     // 2. HMAC Signature Check
     const fields = decoded.signed_field_names.split(",");
-    const message = fields.map((field) => `${field}=${decoded[field]}`).join(",");
+    const message = fields
+      .map((field) => `${field}=${decoded[field]}`)
+      .join(",");
     const expectedSignature = crypto
       .createHmac("sha256", String(ESEWA_SECRET_KEY))
       .update(message)
@@ -127,7 +188,9 @@ export const verifyEsewaPayment = async (req, res) => {
     // Extract booking ID
     const bookingId = decoded.transaction_uuid.split("-")[0];
     if (!mongoose.Types.ObjectId.isValid(bookingId)) {
-      return res.status(400).json({ success: false, message: "Invalid transaction reference." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid transaction reference." });
     }
 
     // 3. Status Check with eSewa servers
@@ -138,13 +201,17 @@ export const verifyEsewaPayment = async (req, res) => {
     if (statusData.status !== "COMPLETE") {
       await Payment.findOneAndUpdate(
         { transactionUuid: decoded.transaction_uuid },
-        { status: "failed", rawGatewayResponse: statusData }
+        { status: "failed", rawGatewayResponse: statusData },
       );
-      return res.status(400).json({ success: false, message: "Transaction verification with eSewa failed." });
+      return res.status(400).json({
+        success: false,
+        message: "Transaction verification with eSewa failed.",
+      });
     }
 
     // Handle DB Session
-    const topologyType = mongoose.connection.getClient().topology?.description?.type;
+    const topologyType =
+      mongoose.connection.getClient().topology?.description?.type;
     const isReplicaSet = topologyType && topologyType !== "Single";
 
     if (isReplicaSet) {
@@ -155,13 +222,17 @@ export const verifyEsewaPayment = async (req, res) => {
     const booking = await Booking.findById(bookingId).session(session || null);
     if (!booking) {
       if (session) await session.abortTransaction();
-      return res.status(404).json({ success: false, message: "Booking record not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Booking record not found." });
     }
 
     // Idempotency check
     if (booking.paymentStatus === "paid") {
       if (session) await session.abortTransaction();
-      return res.status(200).json({ success: true, message: "Already verified.", booking });
+      return res
+        .status(200)
+        .json({ success: true, message: "Already verified.", booking });
     }
 
     // 4. Update Payment Document to Completed
@@ -172,7 +243,7 @@ export const verifyEsewaPayment = async (req, res) => {
         transactionCode: decoded.transaction_code,
         rawGatewayResponse: decoded,
       },
-      { session: session || null }
+      { session: session || null },
     );
 
     // 5. Atomic Show inventory update
@@ -187,32 +258,37 @@ export const verifyEsewaPayment = async (req, res) => {
           soldTickets: booking.totalTickets,
         },
       },
-      { new: true, session: session || null }
+      { new: true, session: session || null },
     );
 
     if (!updatedShow) {
       if (session) await session.abortTransaction();
-      return res.status(400).json({ success: false, message: "Tickets sold out or unavailable." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Tickets sold out or unavailable." });
     }
 
     // 6. Generate Tickets and QR Codes
-    const ticketPromises = Array.from({ length: booking.totalTickets }, async () => {
-      const ticketId = new mongoose.Types.ObjectId().toString();
-      const qrPayload = JSON.stringify({
-        bookingId: booking._id,
-        ticketId,
-        showId: booking.showId,
-      });
+    const ticketPromises = Array.from(
+      { length: booking.totalTickets },
+      async () => {
+        const ticketId = new mongoose.Types.ObjectId().toString();
+        const qrPayload = JSON.stringify({
+          bookingId: booking._id,
+          ticketId,
+          showId: booking.showId,
+        });
 
-      const qrCode = await QRCode.toDataURL(qrPayload);
+        const qrCode = await QRCode.toDataURL(qrPayload);
 
-      return {
-        ticketId,
-        price: updatedShow.price,
-        qrCode,
-        isCheckedIn: false,
-      };
-    });
+        return {
+          ticketId,
+          price: updatedShow.price,
+          qrCode,
+          isCheckedIn: false,
+        };
+      },
+    );
 
     const tickets = await Promise.all(ticketPromises);
 
@@ -224,7 +300,7 @@ export const verifyEsewaPayment = async (req, res) => {
     await booking.save({ session: session || null });
 
     if (session) await session.commitTransaction();
-
+    await updateShowTicketCounts(booking.showId);
     return res.status(200).json({
       success: true,
       message: "Payment verified successfully and QR tickets created.",
@@ -262,13 +338,19 @@ export const createBooking = async (req, res) => {
     }
 
     if (!mongoose.Types.ObjectId.isValid(showId)) {
-      return res.status(400).json({ success: false, message: "Invalid Show ID." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid Show ID." });
     }
 
     // Lean query for read efficiency
-    const show = await Show.findById(showId).select("price availableTickets organizerId status").lean();
+    const show = await Show.findById(showId)
+      .select("price availableTickets organizerId status")
+      .lean();
     if (!show) {
-      return res.status(404).json({ success: false, message: "Show not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Show not found." });
     }
 
     if (show.availableTickets < totalTickets) {
@@ -332,9 +414,14 @@ export const getOrganizerBookings = async (req, res) => {
       ]),
 
       Booking.find({ organizerId: orgObjectId })
-        .select("userId showId totalTickets totalAmount paymentStatus bookingStatus createdAt")
+        .select(
+          "userId showId totalTickets totalAmount paymentStatus bookingStatus createdAt",
+        )
         .populate("userId", "name email")
-        .populate("showId", "name bannerImage date venue totalTickets availableTickets soldTickets price")
+        .populate(
+          "showId",
+          "name bannerImage date venue totalTickets availableTickets soldTickets price",
+        )
         .sort({ createdAt: -1 })
         .lean(),
     ]);
@@ -365,11 +452,8 @@ export const getUserBookings = async (req, res) => {
       });
     }
 
-    // Only fetch bookings where paymentStatus is "paid"
-    const bookings = await Booking.find({ 
-      userId, 
-      paymentStatus: "paid" 
-    })
+    // ✅ Fetch ALL bookings for the user – no paymentStatus filter
+    const bookings = await Booking.find({ userId })
       .populate("showId", "name title date venue price bannerImage")
       .sort({ createdAt: -1 })
       .lean();
@@ -383,6 +467,7 @@ export const getUserBookings = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
 export const getBookingById = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id)
@@ -390,7 +475,10 @@ export const getBookingById = async (req, res) => {
       .populate("showId")
       .lean();
 
-    if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+    if (!booking)
+      return res
+        .status(404)
+        .json({ success: false, message: "Booking not found" });
 
     return res.status(200).json({ success: true, booking });
   } catch (error) {
@@ -400,32 +488,197 @@ export const getBookingById = async (req, res) => {
 
 export const cancelBooking = async (req, res) => {
   try {
-    const booking = await Booking.findById(req.params.id);
-    if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+    const bookingId = req.params.id;
+    const userId = req.user._id;
+
+    // ==========================================
+    // FIND BOOKING
+    // ==========================================
+
+    const booking = await Booking.findById(bookingId);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    // ==========================================
+    // CHECK USER OWNERSHIP
+    // ==========================================
+
+    if (booking.userId.toString() !== userId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to cancel this booking",
+      });
+    }
+
+    // ==========================================
+    // ALREADY CANCELLED
+    // ==========================================
 
     if (booking.bookingStatus === "cancelled") {
-      return res.status(400).json({ success: false, message: "Booking already cancelled" });
+      return res.status(400).json({
+        success: false,
+        message: "Booking is already cancelled",
+      });
     }
 
-    if (booking.paymentStatus === "paid") {
-      return res.status(400).json({ success: false, message: "Paid bookings cannot be auto-cancelled." });
+    // ==========================================
+    // 24 HOUR CANCELLATION WINDOW
+    // ==========================================
+
+    const bookingTime = new Date(booking.createdAt).getTime();
+
+    const currentTime = Date.now();
+
+    const hoursSinceBooking = (currentTime - bookingTime) / (1000 * 60 * 60);
+
+    if (hoursSinceBooking > 24) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Cancellation period has expired. Cancellation is allowed only within 24 hours of booking.",
+      });
     }
+
+    // ==========================================
+    // FIND SHOW
+    // ==========================================
+
+    const show = await Show.findById(booking.showId);
+
+    if (!show) {
+      return res.status(404).json({
+        success: false,
+        message: "Show not found",
+      });
+    }
+
+    // ==========================================
+    // CHECK ALREADY CHECKED-IN
+    // ==========================================
+
+    const checkedInTicket = booking.tickets?.some(
+      (ticket) => ticket.isCheckedIn,
+    );
+
+    if (checkedInTicket) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This booking cannot be cancelled because one or more tickets have already been checked in.",
+      });
+    }
+
+    // ==========================================
+    // CANCEL BOOKING
+    // ==========================================
 
     booking.bookingStatus = "cancelled";
+
+    booking.cancelledAt = new Date();
+
+    booking.cancellationReason = "Cancelled by user within 24 hours of booking";
+
+    // ==========================================
+    // RESTORE TICKET INVENTORY
+    // ==========================================
+
+    show.availableTickets += booking.totalTickets;
+
+    show.soldTickets = Math.max(0, show.soldTickets - booking.totalTickets);
+
+    await show.save();
+
+    // ==========================================
+    // PAID BOOKING
+    // ==========================================
+
+    if (booking.paymentStatus === "paid") {
+      booking.refundStatus = "pending";
+
+      booking.refundAmount = booking.totalAmount;
+
+      booking.refundRequestedAt = new Date();
+
+      await booking.save();
+
+      await updateShowTicketCounts(booking.showId);
+
+      // Find original payment
+      const payment = await Payment.findOne({
+        bookingId: booking._id,
+        status: "completed",
+      });
+
+      if (!payment) {
+        return res.status(200).json({
+          success: true,
+          message:
+            "Booking cancelled, but payment record was not found. Refund requires manual processing.",
+          booking,
+        });
+      }
+
+      // Update payment refund status
+      payment.refundStatus = "pending";
+
+      payment.refundAmount = booking.totalAmount;
+
+      payment.refundRequestedAt = new Date();
+
+      await payment.save();
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Booking cancelled successfully. Refund request has been created.",
+
+        booking,
+
+        refund: {
+          amount: booking.refundAmount,
+          status: booking.refundStatus,
+        },
+      });
+    }
+
+    // ==========================================
+    // UNPAID BOOKING
+    // ==========================================
+
     await booking.save();
 
-    return res.status(200).json({ success: true, message: "Booking cancelled successfully" });
+    return res.status(200).json({
+      success: true,
+      message: "Booking cancelled successfully.",
+      booking,
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("Cancel booking error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to cancel booking",
+    });
   }
 };
 
 export const deleteBooking = async (req, res) => {
   try {
     const booking = await Booking.findByIdAndDelete(req.params.id);
-    if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+    if (!booking)
+      return res
+        .status(404)
+        .json({ success: false, message: "Booking not found" });
 
-    return res.status(200).json({ success: true, message: "Booking deleted successfully" });
+    return res
+      .status(200)
+      .json({ success: true, message: "Booking deleted successfully" });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -488,25 +741,59 @@ export const getAdminBookings = async (req, res) => {
           searchRegex.test(b.userId?.name) ||
           searchRegex.test(b.userId?.email) ||
           searchRegex.test(b.showId?.name) ||
-          searchRegex.test(b.transactionId)
+          searchRegex.test(b.transactionId),
       );
     }
 
     const totalBookingsCount = await Booking.countDocuments(query);
 
     // 4. Admin High-Level Dashboard Analytics Aggregation
+    //    Now computes NET revenue = gross paid - total refunded amounts
+    // 4. Admin High-Level Dashboard Analytics Aggregation
     const stats = await Booking.aggregate([
       {
         $group: {
           _id: null,
-          totalRevenue: {
+          confirmedRevenue: {
             $sum: {
-              $cond: [{ $eq: ["$paymentStatus", "paid"] }, "$totalAmount", 0],
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$bookingStatus", "confirmed"] },
+                    { $eq: ["$paymentStatus", "paid"] },
+                  ],
+                },
+                "$totalAmount",
+                0,
+              ],
+            },
+          },
+          cancellationFeeRevenue: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$bookingStatus", "cancelled"] },
+                    {
+                      $in: [
+                        "$refundStatus",
+                        ["pending", "processing", "processed"],
+                      ],
+                    },
+                  ],
+                },
+                "$deductionAmount", // the fee you kept
+                0,
+              ],
             },
           },
           totalTicketsSold: {
             $sum: {
-              $cond: [{ $eq: ["$bookingStatus", "confirmed"] }, "$totalTickets", 0],
+              $cond: [
+                { $eq: ["$bookingStatus", "confirmed"] },
+                "$totalTickets",
+                0,
+              ],
             },
           },
           confirmedBookings: {
@@ -518,6 +805,17 @@ export const getAdminBookings = async (req, res) => {
           cancelledBookings: {
             $sum: { $cond: [{ $eq: ["$bookingStatus", "cancelled"] }, 1, 0] },
           },
+        },
+      },
+      {
+        $project: {
+          totalRevenue: {
+            $add: ["$confirmedRevenue", "$cancellationFeeRevenue"],
+          },
+          totalTicketsSold: 1,
+          confirmedBookings: 1,
+          pendingBookings: 1,
+          cancelledBookings: 1,
         },
       },
     ]);
@@ -541,5 +839,119 @@ export const getAdminBookings = async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
+  }
+};
+export const refundBooking = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    if (booking.bookingStatus !== "cancelled") {
+      return res.status(400).json({
+        success: false,
+        message: "Only cancelled bookings can be refunded.",
+      });
+    }
+
+    if (booking.paymentStatus !== "paid") {
+      return res.status(400).json({
+        success: false,
+        message: "Only paid bookings can be refunded.",
+      });
+    }
+
+    if (booking.refundStatus === "processed") {
+      return res.status(400).json({
+        success: false,
+        message: "This booking has already been refunded.",
+      });
+    }
+
+    const payment = await Payment.findOne({
+      bookingId: booking._id,
+      status: "completed",
+    });
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment record not found.",
+      });
+    }
+
+    // ==========================================
+    // CALCULATE REFUND AMOUNT (20% DEDUCTION)
+    // ==========================================
+    const deductionPercent = 20; // You can change this or make it dynamic
+    const totalAmount = booking.totalAmount;
+    const deductionAmount = (totalAmount * deductionPercent) / 100;
+    const netRefundAmount =
+      Math.round((totalAmount - deductionAmount) * 100) / 100; // round to 2 decimals
+
+    // Store deduction details (optional)
+    booking.deductionAmount = deductionAmount; // if you added the field
+    booking.refundAmount = netRefundAmount; // store net refund amount
+
+    // ==========================================
+    // START REFUND (with net amount)
+    // ==========================================
+
+    booking.refundStatus = "processing";
+    payment.refundStatus = "processing";
+
+    await booking.save();
+    await payment.save();
+
+    /*
+      IMPORTANT: Call payment gateway refund API with `netRefundAmount`.
+
+      Example for eSewa:
+      const gatewayResponse = await processEsewaRefund({
+        transactionCode: payment.transactionCode,
+        amount: netRefundAmount,   // <-- use net amount
+      });
+    */
+
+    // ==========================================
+    // AFTER GATEWAY CONFIRMS REFUND
+    // ==========================================
+
+    const refundTransactionId = `REFUND-${Date.now()}`;
+
+    booking.refundStatus = "processed";
+    booking.paymentStatus = "refunded";
+    booking.refundedAt = new Date();
+    booking.refundTransactionId = refundTransactionId;
+
+    payment.refundStatus = "completed";
+    payment.status = "refunded";
+    payment.refundedAt = new Date();
+    payment.refundTransactionId = refundTransactionId;
+
+    await booking.save();
+    await payment.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Refund processed successfully (${deductionPercent}% deduction applied).`,
+      refund: {
+        originalAmount: totalAmount,
+        deductionAmount,
+        netRefundAmount,
+        transactionId: refundTransactionId,
+      },
+    });
+  } catch (error) {
+    console.error("Refund error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to process refund",
+    });
   }
 };

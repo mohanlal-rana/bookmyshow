@@ -9,6 +9,7 @@ export default function MyBookings() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [cancellingId, setCancellingId] = useState(null);
 
   useEffect(() => {
     fetchMyBookings();
@@ -31,7 +32,12 @@ export default function MyBookings() {
         throw new Error(data.message || "Failed to fetch bookings.");
       }
 
-      setBookings(data.bookings || []);
+      // ✅ Filter out pending bookings (unpaid/not confirmed)
+      const filteredBookings = (data.bookings || []).filter(
+        (b) => b.bookingStatus !== "pending" && b.paymentStatus !== "pending"
+      );
+
+      setBookings(filteredBookings);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -47,6 +53,89 @@ export default function MyBookings() {
       month: "short",
       day: "numeric",
     });
+  };
+
+  // Check if a booking can be cancelled (not cancelled, within 24h, and paid)
+  const canCancel = (booking) => {
+    if (booking.bookingStatus === "cancelled") return false;
+    if (booking.paymentStatus !== "paid") return false;
+    const created = new Date(booking.createdAt);
+    const now = new Date();
+    const hoursDiff = (now - created) / (1000 * 60 * 60);
+    return hoursDiff <= 24;
+  };
+
+  const handleCancel = async (bookingId) => {
+    if (!window.confirm("Are you sure you want to cancel this booking? This cannot be undone.")) {
+      return;
+    }
+
+    setCancellingId(bookingId);
+    try {
+      const res = await fetch(`${API}/api/bookings/${bookingId}/cancel`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Cancellation failed.");
+      }
+
+      setBookings((prev) =>
+        prev.map((b) =>
+          b._id === bookingId
+            ? {
+                ...b,
+                bookingStatus: "cancelled",
+                paymentStatus: data.booking?.paymentStatus || b.paymentStatus,
+                refundStatus: data.booking?.refundStatus || b.refundStatus,
+                cancelledAt: new Date().toISOString(),
+              }
+            : b
+        )
+      );
+
+      alert(data.message || "Booking cancelled successfully.");
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  const getStatusBadge = (booking) => {
+    const { bookingStatus, paymentStatus, refundStatus } = booking;
+
+    if (bookingStatus === "cancelled") {
+      if (paymentStatus === "refunded" || refundStatus === "processed") {
+        return (
+          <span className="text-xs font-bold px-3 py-1 rounded-full capitalize bg-purple-100 text-purple-700 border border-purple-300">
+            Refunded
+          </span>
+        );
+      }
+      return (
+        <span className="text-xs font-bold px-3 py-1 rounded-full capitalize bg-red-100 text-red-700 border border-red-300">
+          Cancelled
+        </span>
+      );
+    }
+
+    if (bookingStatus === "confirmed" && paymentStatus === "paid") {
+      return (
+        <span className="text-xs font-bold px-3 py-1 rounded-full capitalize bg-green-100 text-green-700 border border-green-300">
+          Confirmed • Paid
+        </span>
+      );
+    }
+
+    return (
+      <span className="text-xs font-bold px-3 py-1 rounded-full capitalize bg-gray-100 text-gray-700 border border-gray-300">
+        {bookingStatus || "Unknown"}
+      </span>
+    );
   };
 
   if (loading) {
@@ -86,7 +175,7 @@ export default function MyBookings() {
               My Tickets
             </h1>
             <p className="text-sm text-gray-600 mt-1">
-              View your confirmed event tickets and QR passes
+              View your event tickets and their current status
             </p>
           </div>
           <button
@@ -115,6 +204,8 @@ export default function MyBookings() {
           <div className="space-y-6">
             {bookings.map((booking) => {
               const show = booking.showId || {};
+              const isCancelled = booking.bookingStatus === "cancelled";
+              const isRefunded = booking.paymentStatus === "refunded" || booking.refundStatus === "processed";
 
               return (
                 <div
@@ -133,9 +224,7 @@ export default function MyBookings() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <span className="text-xs font-bold px-3 py-1 rounded-full capitalize bg-green-100 text-green-700 border border-green-300">
-                        Confirmed • Paid
-                      </span>
+                      {getStatusBadge(booking)}
                       <span className="text-xs text-gray-500 font-medium">
                         {formatDate(booking.createdAt)}
                       </span>
@@ -146,8 +235,10 @@ export default function MyBookings() {
                   <div className="p-5 sm:p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="md:col-span-2 space-y-3">
                       <h2
-                        onClick={() => navigate(`/event/${show._id}`)}
-                        className="text-xl font-bold text-[#34908B] cursor-pointer hover:underline inline-block"
+                        onClick={() => !isCancelled && navigate(`/event/${show._id}`)}
+                        className={`text-xl font-bold text-[#34908B] ${
+                          !isCancelled ? "cursor-pointer hover:underline" : "cursor-default opacity-70"
+                        } inline-block`}
                       >
                         {show.name || show.title || "Event Title"}
                       </h2>
@@ -168,6 +259,18 @@ export default function MyBookings() {
                           </p>
                         </div>
                       </div>
+
+                      {/* Show refund info if applicable */}
+                      {isRefunded && booking.refundAmount !== undefined && (
+                        <div className="mt-2 text-sm text-gray-600 bg-purple-50 p-2 rounded-lg border border-purple-200">
+                          <span className="font-semibold">Refund:</span> Rs.{booking.refundAmount}
+                          {booking.deductionAmount > 0 && (
+                            <span className="text-xs text-gray-500 ml-2">
+                              (Deduction: Rs.{booking.deductionAmount})
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Action Panel */}
@@ -188,12 +291,30 @@ export default function MyBookings() {
                         </div>
                       </div>
 
+                      {/* QR button – disabled if cancelled */}
                       <button
                         onClick={() => navigate(`/booking/tickets/${booking._id}`)}
-                        className="w-full bg-[#34908B] text-white text-sm font-semibold py-2.5 rounded-lg hover:bg-[#2b7873] transition shadow-sm flex items-center justify-center gap-2"
+                        disabled={isCancelled}
+                        className={`w-full text-sm font-semibold py-2.5 rounded-lg transition shadow-sm flex items-center justify-center gap-2 ${
+                          isCancelled
+                            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                            : "bg-[#34908B] text-white hover:bg-[#2b7873]"
+                        }`}
                       >
-                        <span>🎟️</span> View & Download QR
+                        <span>🎟️</span>
+                        {isCancelled ? "Cancelled" : "View & Download QR"}
                       </button>
+
+                      {/* Cancel button – only if not cancelled and within 24h */}
+                      {canCancel(booking) && (
+                        <button
+                          onClick={() => handleCancel(booking._id)}
+                          disabled={cancellingId === booking._id}
+                          className="w-full bg-red-500 text-white text-sm font-semibold py-2.5 rounded-lg hover:bg-red-600 transition shadow-sm flex items-center justify-center gap-2"
+                        >
+                          {cancellingId === booking._id ? "Cancelling..." : "Cancel Booking"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
