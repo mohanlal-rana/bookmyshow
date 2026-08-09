@@ -22,7 +22,7 @@ export default function EditEvent() {
     totalTickets: "",
     availableTickets: "",
     maxTicketsPerUser: 5,
-    refundPolicy: "",
+    // refundPolicy: "",
     status: "published",
     bookingDeadline: "",
     tags: "", // stored as string during editing
@@ -466,7 +466,7 @@ export default function EditEvent() {
         {/* ---- TICKETS & PRICE ---- */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Price ($) *
+            Price (Rs) *
           </label>
           <input
             type="number"
@@ -499,7 +499,7 @@ export default function EditEvent() {
           />
         </div>
 
-        <div>
+        {/* <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Available Tickets *
           </label>
@@ -513,7 +513,7 @@ export default function EditEvent() {
             className="w-full p-3 border rounded-lg"
             required
           />
-        </div>
+        </div> */}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -530,7 +530,7 @@ export default function EditEvent() {
         </div>
 
         {/* ---- REFUND POLICY & STATUS ---- */}
-        <div className="md:col-span-2">
+        {/* <div className="md:col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Refund Policy
           </label>
@@ -542,7 +542,7 @@ export default function EditEvent() {
             onChange={handleChange}
             className="w-full p-3 border rounded-lg"
           />
-        </div>
+        </div> */}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">

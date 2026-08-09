@@ -154,10 +154,10 @@ const ShowSchema = new mongoose.Schema(
       type: Date,
     },
 
-    refundPolicy: {
-      type: String,
-      default: "No refund available",
-    },
+    // refundPolicy: {
+    //   type: String,
+    //   default: "No refund available",
+    // },
 
     // ================= SECURITY =================
     qrEnabled: {

@@ -18,10 +18,10 @@ export default function AddEvent() {
     city: "",
     address: "",
     totalTickets: "",
-    availableTickets: "",
+    // availableTickets: "",
     price: "",
     maxTicketsPerUser: 5,
-    refundPolicy: "No refund available",
+    // refundPolicy: "No refund available",
     status: "published",
     bookingDeadline: "",
     tags: "", // Stored as plain string during input
@@ -105,12 +105,12 @@ export default function AddEvent() {
 
       // Numeric Ticket Details
       form.append("totalTickets", Number(formData.totalTickets));
-      form.append("availableTickets", Number(formData.availableTickets));
+      // form.append("availableTickets", Number(formData.availableTickets));
       form.append("price", Number(formData.price));
       form.append("maxTicketsPerUser", Number(formData.maxTicketsPerUser));
 
       // Additional Metadata
-      form.append("refundPolicy", formData.refundPolicy);
+      // form.append("refundPolicy", formData.refundPolicy);
       form.append("status", formData.status);
 
       if (formData.bookingDeadline) {
@@ -385,7 +385,7 @@ export default function AddEvent() {
         {/* ---- TICKETS & PRICE ---- */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Price ($) *
+            Price (Rs) *
           </label>
           <input
             type="number"
@@ -421,7 +421,7 @@ export default function AddEvent() {
           )}
         </div>
 
-        <div>
+        {/* <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Available Tickets *
           </label>
@@ -440,7 +440,7 @@ export default function AddEvent() {
               {fieldErrors.availableTickets}
             </p>
           )}
-        </div>
+        </div> */}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -457,7 +457,7 @@ export default function AddEvent() {
         </div>
 
         {/* ---- REFUND POLICY & STATUS ---- */}
-        <div className="md:col-span-2">
+        {/* <div className="md:col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Refund Policy
           </label>
@@ -469,9 +469,9 @@ export default function AddEvent() {
             onChange={handleChange}
             className="w-full p-3 border rounded-lg"
           />
-        </div>
+        </div> */}
 
-        <div>
+        {/* <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Status
           </label>
@@ -486,7 +486,7 @@ export default function AddEvent() {
             <option value="cancelled">Cancelled</option>
             <option value="completed">Completed</option>
           </select>
-        </div>
+        </div> */}
 
         {/* ---- TAGS ---- */}
         <div className="md:col-span-2">
