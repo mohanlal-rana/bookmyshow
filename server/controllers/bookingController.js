@@ -330,29 +330,31 @@ export const createBooking = async (req, res) => {
       });
     }
 
-    if (!showId || !totalTickets || totalTickets < 1) {
+    // Normalize and validate ticket types
+    const validTicketTypes = ["standard", "student"];
+    const normalizedType = ticketType?.toString().toLowerCase();
+
+    if (!showId || !totalTickets || totalTickets < 1 || !validTicketTypes.includes(normalizedType)) {
       return res.status(400).json({
         success: false,
-        message: "Please provide a valid showId and ticket count.",
+        message: "Please provide a valid showId, totalTickets, and ticketType ('standard' or 'student').",
       });
     }
 
     if (!mongoose.Types.ObjectId.isValid(showId)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid Show ID." });
+      return res.status(400).json({ success: false, message: "Invalid Show ID." });
     }
 
-    // Lean query for read efficiency
+    // Fetch show pricing and general ticket availability
     const show = await Show.findById(showId)
-      .select("price availableTickets organizerId status")
+      .select("price prices availableTickets organizerId status")
       .lean();
+
     if (!show) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Show not found." });
+      return res.status(404).json({ success: false, message: "Show not found." });
     }
 
+    // Check shared ticket inventory
     if (show.availableTickets < totalTickets) {
       return res.status(400).json({
         success: false,
@@ -360,8 +362,25 @@ export const createBooking = async (req, res) => {
       });
     }
 
-    const pricePerTicket = show.price || 0;
+    // Determine unit price:
+    // 1. Look up show.prices[normalizedType] if explicitly defined
+    // 2. Otherwise compute dynamic student discount (20% off) or standard price
+    const basePrice = show.price || 0;
+    let pricePerTicket = show.prices?.[normalizedType];
+
+    if (pricePerTicket === undefined) {
+      pricePerTicket = normalizedType === "student" ? Math.round(basePrice * 0.8) : basePrice;
+    }
+
     const totalAmount = pricePerTicket * totalTickets;
+
+    // Generate individual ticket objects
+    const generatedTickets = Array.from({ length: totalTickets }, () => ({
+      ticketId: new mongoose.Types.ObjectId().toString(),
+      ticketType: normalizedType,
+      price: pricePerTicket,
+      isCheckedIn: false,
+    }));
 
     const booking = await Booking.create({
       userId,
@@ -371,7 +390,7 @@ export const createBooking = async (req, res) => {
       totalAmount,
       paymentStatus: "pending",
       bookingStatus: "pending",
-      tickets: [],
+      tickets: generatedTickets,
     });
 
     return res.status(201).json({
@@ -384,7 +403,6 @@ export const createBooking = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-
 // ===============================
 // 📦 GET ORGANIZER BOOKINGS & ANALYTICS
 // ===============================

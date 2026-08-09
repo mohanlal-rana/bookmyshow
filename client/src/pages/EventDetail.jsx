@@ -1,4 +1,4 @@
-import { useEffect, useState, useContext } from "react";
+import { useEffect, useState, useContext, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { AuthContext } from "../store/AuthContext";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
@@ -29,7 +29,7 @@ export default function EventDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [ticketQuantity, setTicketQuantity] = useState(1);
-  const [selectedTicketType, setSelectedTicketType] = useState("");
+  const [selectedTicketType, setSelectedTicketType] = useState("standard");
 
   // Directions state
   const [userCoords, setUserCoords] = useState(null);
@@ -50,11 +50,6 @@ export default function EventDetail() {
         }
 
         setShow(data.show);
-
-        // Auto-select first ticket type if available
-        if (data.show?.ticketTypes?.length > 0) {
-          setSelectedTicketType(data.show.ticketTypes[0].name);
-        }
       } catch (err) {
         setError(err.message);
       } finally {
@@ -65,13 +60,36 @@ export default function EventDetail() {
     fetchShowDetail();
   }, [API, id]);
 
+  // Compute Standard vs Student pricing options
+  const ticketOptions = useMemo(() => {
+    const basePrice = show?.price || 0;
+    const standardPrice = show?.prices?.standard ?? basePrice;
+    const studentPrice = show?.prices?.student ?? Math.round(basePrice * 0.8);
+
+    return [
+      { name: "Standard Ticket", typeKey: "standard", price: standardPrice },
+      { name: "Student Ticket (20% Off)", typeKey: "student", price: studentPrice },
+    ];
+  }, [show]);
+
+  const selectedTier = useMemo(() => {
+    return (
+      ticketOptions.find((t) => t.typeKey === selectedTicketType) ||
+      ticketOptions[0]
+    );
+  }, [ticketOptions, selectedTicketType]);
+
+  const unitPrice = selectedTier?.price || 0;
+  const availableQty = show?.availableTickets || 0;
+  const maxSelectable = Math.min(show?.maxTicketsPerUser || 5, availableQty);
+
   const handleBooking = () => {
     navigate(`/booking/payment/${id}`, {
       state: {
         show,
         quantity: ticketQuantity,
-        ticketType:
-          selectedTicketType || show?.ticketTypes?.[0]?.name || "Standard",
+        ticketType: selectedTier.typeKey, // Sends "standard" or "student"
+        totalAmount: unitPrice * ticketQuantity,
       },
     });
   };
@@ -84,10 +102,8 @@ export default function EventDetail() {
     !isNaN(coordinates[0]) &&
     !isNaN(coordinates[1]);
 
-  // Leaflet expects [Latitude, Longitude]
   const mapPosition = hasCoordinates ? [coordinates[1], coordinates[0]] : null;
 
-  // Request browser geolocation to render directions on the map
   const handleGetDirections = () => {
     setLocationError("");
     setGettingLocation(true);
@@ -98,13 +114,11 @@ export default function EventDetail() {
           setUserCoords([position.coords.latitude, position.coords.longitude]);
           setGettingLocation(false);
         },
-        (err) => {
+        () => {
           setGettingLocation(false);
-          setLocationError(
-            "Unable to retrieve your location. Please check browser permissions.",
-          );
+          setLocationError("Unable to retrieve your location. Please check browser permissions.");
         },
-        { enableHighAccuracy: true, timeout: 10000 },
+        { enableHighAccuracy: true, timeout: 10000 }
       );
     } else {
       setGettingLocation(false);
@@ -112,7 +126,6 @@ export default function EventDetail() {
     }
   };
 
-  // Open native navigation app (Google Maps or Apple Maps)
   const openNativeNavigation = () => {
     if (!mapPosition) return;
     const [lat, lng] = mapPosition;
@@ -127,9 +140,7 @@ export default function EventDetail() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#FDF4AF] flex items-center justify-center p-6">
-        <div className="text-xl font-semibold text-[#34908B]">
-          Loading event details...
-        </div>
+        <div className="text-xl font-semibold text-[#34908B]">Loading event details...</div>
       </div>
     );
   }
@@ -159,14 +170,6 @@ export default function EventDetail() {
     );
   }
 
-  const selectedTypeInfo =
-    show.ticketTypes?.find((t) => t.name === selectedTicketType) ||
-    show.ticketTypes?.[0];
-  const unitPrice = selectedTypeInfo?.price || show.price || 0;
-  const availableQty = selectedTypeInfo?.quantity ?? show.availableTickets ?? 0;
-
-  const maxSelectable = Math.min(show.maxTicketsPerUser || 5, availableQty);
-
   return (
     <div className="min-h-screen bg-[#FDF4AF] py-10 px-4 md:px-8">
       <div className="max-w-5xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-[#8ce0d2]">
@@ -188,7 +191,7 @@ export default function EventDetail() {
         )}
 
         <div className="p-6 md:p-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Content (Left 2 Columns) */}
+          {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             <div>
               <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -216,17 +219,15 @@ export default function EventDetail() {
               )}
             </div>
 
-            {/* Event Description */}
+            {/* Description */}
             <div>
-              <h2 className="text-xl font-bold text-gray-800 mb-2">
-                About the Event
-              </h2>
+              <h2 className="text-xl font-bold text-gray-800 mb-2">About the Event</h2>
               <p className="text-gray-600 whitespace-pre-line leading-relaxed">
                 {show.description}
               </p>
             </div>
 
-            {/* Date & Venue Section with Map and Directions */}
+            {/* Date & Venue Section */}
             <div className="bg-[#FDF4AF]/40 rounded-xl p-5 border border-yellow-200 space-y-4">
               <h2 className="text-lg font-bold text-gray-800">Date & Venue</h2>
 
@@ -254,7 +255,7 @@ export default function EventDetail() {
                 </div>
               </div>
 
-              {/* Interactive Map & Directions Toolbar */}
+              {/* Leaflet Map & Directions */}
               {mapPosition ? (
                 <div className="space-y-3 mt-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -266,8 +267,8 @@ export default function EventDetail() {
                       {gettingLocation
                         ? "Locating..."
                         : userCoords
-                          ? "🔄 Recalculate Route"
-                          : "🚗 Show Route on Map"}
+                        ? "🔄 Recalculate Route"
+                        : "🚗 Show Route on Map"}
                     </button>
                     <a
                       href={`https://www.google.com/maps/search/?api=1&query=${mapPosition[0]},${mapPosition[1]}`}
@@ -275,13 +276,6 @@ export default function EventDetail() {
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 bg-white border border-gray-300 text-gray-700 text-xs px-3 py-2 rounded-lg hover:bg-gray-50 transition font-semibold shadow-sm"
                     >
-                      <svg
-                        className="w-4 h-4 text-red-500"
-                        fill="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-                      </svg>
                       Open in Google Maps
                     </a>
                     <button
@@ -296,7 +290,6 @@ export default function EventDetail() {
                     <p className="text-xs text-red-500">{locationError}</p>
                   )}
 
-                  {/* Leaflet Map */}
                   <div className="w-full h-72 rounded-xl overflow-hidden border border-gray-300 z-0">
                     <MapContainer
                       center={mapPosition}
@@ -309,7 +302,6 @@ export default function EventDetail() {
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                       />
 
-                      {/* Venue Marker */}
                       <Marker position={mapPosition}>
                         <Popup>
                           <strong>{show.venue?.name}</strong> <br />
@@ -317,14 +309,12 @@ export default function EventDetail() {
                         </Popup>
                       </Marker>
 
-                      {/* User Location Marker */}
                       {userCoords && (
                         <Marker position={userCoords}>
-                          <Popup>Your Current Location</Popup>
+                          <Popup>Your Location</Popup>
                         </Marker>
                       )}
 
-                      {/* Routing Line Layer */}
                       {userCoords && (
                         <RoutingControl
                           userCoords={userCoords}
@@ -342,47 +332,45 @@ export default function EventDetail() {
             </div>
           </div>
 
-          {/* Ticket Booking Sidebar (Right Column) */}
+          {/* Ticket Booking Sidebar */}
           <div className="bg-[#A5E9DD]/30 border border-[#8ce0d2] rounded-xl p-6 h-fit space-y-6">
-            {show.ticketTypes?.length > 0 && (
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Select Ticket Type
-                </label>
-                <div className="space-y-2">
-                  {show.ticketTypes.map((type) => (
-                    <button
-                      key={type.name}
-                      onClick={() => setSelectedTicketType(type.name)}
-                      className={`w-full text-left p-3 rounded-lg border text-sm transition ${
-                        selectedTicketType === type.name
-                          ? "border-[#34908B] bg-[#34908B]/10 font-bold text-[#34908B]"
-                          : "border-gray-200 bg-white text-gray-700"
-                      }`}
-                    >
-                      <div className="flex justify-between">
-                        <span>{type.name}</span>
-                        <span>Rs. {type.price}</span>
-                      </div>
-                      <span className="text-xs text-gray-500 font-normal">
-                        {type.quantity} tickets left
-                      </span>
-                    </button>
-                  ))}
-                </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Select Ticket Category
+              </label>
+              <div className="space-y-2">
+                {ticketOptions.map((tier) => (
+                  <button
+                    key={tier.typeKey}
+                    onClick={() => {
+                      setSelectedTicketType(tier.typeKey);
+                      setTicketQuantity(1);
+                    }}
+                    className={`w-full text-left p-3 rounded-lg border text-sm transition ${
+                      selectedTicketType === tier.typeKey
+                        ? "border-[#34908B] bg-[#34908B]/10 font-bold text-[#34908B]"
+                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span>{tier.name}</span>
+                      <span>Rs. {tier.price}</span>
+                    </div>
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
 
             <div>
               <span className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
-                Ticket Price
+                Ticket Unit Price
               </span>
               <p className="text-3xl font-extrabold text-[#34908B] mt-1">
                 {unitPrice ? `Rs. ${unitPrice}` : "Free"}
               </p>
             </div>
 
-            {/* Quantity Selector */}
+            {/* Quantity Selector & Checkout */}
             {availableQty > 0 ? (
               <div className="space-y-4">
                 <div>
@@ -394,13 +382,11 @@ export default function EventDetail() {
                     onChange={(e) => setTicketQuantity(Number(e.target.value))}
                     className="w-full p-2.5 bg-white border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#34908B]"
                   >
-                    {Array.from({ length: maxSelectable }, (_, i) => i + 1).map(
-                      (num) => (
-                        <option key={num} value={num}>
-                          {num} {num === 1 ? "Ticket" : "Tickets"}
-                        </option>
-                      ),
-                    )}
+                    {Array.from({ length: Math.max(1, maxSelectable) }, (_, i) => i + 1).map((num) => (
+                      <option key={num} value={num}>
+                        {num} {num === 1 ? "Ticket" : "Tickets"}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

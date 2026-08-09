@@ -1,4 +1,4 @@
-import { useState, useContext } from "react";
+import { useState, useContext, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AuthContext } from "../store/AuthContext";
 
@@ -7,9 +7,27 @@ export default function MakePayment() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const { show, quantity = 1, ticketType } = location.state || {};
+  const { show, quantity = 1, ticketType = "standard" } = location.state || {};
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
+  // Safely calculate unit price matching backend logic (supports standard & student)
+  const unitPrice = useMemo(() => {
+    if (!show) return 0;
+
+    const basePrice = show.price || 0;
+    const normalizedType = ticketType.toString().toLowerCase();
+
+    // 1. Explicitly configured price in show.prices object
+    if (show.prices?.[normalizedType] !== undefined) {
+      return show.prices[normalizedType];
+    }
+
+    // 2. Dynamic fallback (Student gets 20% off)
+    return normalizedType === "student" ? Math.round(basePrice * 0.8) : basePrice;
+  }, [show, ticketType]);
+
+  const totalAmount = unitPrice * quantity;
 
   if (!show) {
     return (
@@ -28,10 +46,6 @@ export default function MakePayment() {
     );
   }
 
-  const ticketInfo = show.ticketTypes?.find((t) => t.name === ticketType);
-  const unitPrice = ticketInfo?.price || show.price || 0;
-  const totalAmount = unitPrice * quantity;
-
   // Real eSewa Flow: Create pending booking -> Fetch HMAC signature -> Auto Submit POST form
   const handleEsewaPayment = async () => {
     setLoading(true);
@@ -45,7 +59,7 @@ export default function MakePayment() {
         credentials: "include",
         body: JSON.stringify({
           showId: show._id,
-          ticketType: ticketType || show.ticketTypes?.[0]?.name || "Standard",
+          ticketType: ticketType.toLowerCase(), // Ensures lowercase 'standard' or 'student'
           totalTickets: quantity,
         }),
       });
@@ -129,7 +143,9 @@ export default function MakePayment() {
             <div className="space-y-3 border-t pt-4 text-sm text-gray-700">
               <div className="flex justify-between">
                 <span>Ticket Type:</span>
-                <span className="font-semibold text-gray-900">{ticketType || "Standard"}</span>
+                <span className="font-semibold text-gray-900 capitalize">
+                  {ticketType}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>Price per Ticket:</span>
