@@ -1,6 +1,7 @@
 import { useEffect, useState, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { AuthContext } from "../../store/AuthContext";
+import { MapPin } from "lucide-react"; // Import MapPin icon
 
 export default function OrganizerEventDetail() {
   const { API } = useContext(AuthContext);
@@ -225,22 +226,40 @@ export default function OrganizerEventDetail() {
             </div>
           </div>
 
-          <div className="bg-gray-50 p-4 rounded-lg border">
-            <h2 className="font-bold text-lg text-gray-800 mb-3">
-              Venue Details
-            </h2>
-            <div className="space-y-2 text-sm text-gray-700">
-              <p>
-                <strong>Name:</strong> {show.venue?.name}
-              </p>
-              <p>
-                <strong>City:</strong> {show.venue?.city}
-              </p>
-              <p>
-                <strong>Address:</strong> {show.venue?.address}
-              </p>
-            </div>
-          </div>
+<div>
+  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+    📍 Venue Details
+  </h3>
+  <div className="bg-gray-50 p-4 rounded-xl space-y-2 text-sm border">
+    <p className="font-bold text-gray-800">{show.venue?.name}</p>
+    <p className="text-gray-600">{show.venue?.address}</p>
+    <p className="text-gray-600">{show.venue?.city}</p>
+
+    {/* Coordinates and Map Button */}
+    {show.venue?.location?.coordinates && show.venue.location.coordinates.length === 2 && (
+      <div className="flex items-center justify-between pt-2 border-t border-gray-200 mt-2">
+        <div>
+          <span className="text-xs text-gray-500">Coordinates:</span>
+          <span className="text-xs font-mono text-gray-700 ml-1">
+            {show.venue.location.coordinates[1]}, {show.venue.location.coordinates[0]}
+          </span>
+          <span className="text-[10px] text-gray-400 block">
+            (lat, lng)
+          </span>
+        </div>
+        <a
+          href={`https://www.google.com/maps?q=${show.venue.location.coordinates[1]},${show.venue.location.coordinates[0]}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="bg-[#34908B] hover:bg-[#2b7873] text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 transition shadow-sm"
+        >
+          <MapPin className="w-3.5 h-3.5" />
+          Open Maps
+        </a>
+      </div>
+    )}
+  </div>
+</div>
         </div>
 
         <hr className="my-6" />

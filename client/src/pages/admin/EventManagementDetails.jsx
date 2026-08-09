@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { AuthContext } from "../../store/AuthContext";
+import { MapPin } from "lucide-react";
 
 export default function EventManagementDetails() {
   const { id } = useParams();
@@ -95,7 +96,9 @@ export default function EventManagementDetails() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.message || "Failed to update verification status.");
+        throw new Error(
+          data.message || "Failed to update verification status.",
+        );
       }
 
       if (data.show) {
@@ -103,7 +106,10 @@ export default function EventManagementDetails() {
       } else {
         setShow((prev) => ({
           ...prev,
-          isVerified: typeof data.isVerified === "boolean" ? data.isVerified : !prev.isVerified,
+          isVerified:
+            typeof data.isVerified === "boolean"
+              ? data.isVerified
+              : !prev.isVerified,
         }));
       }
     } catch (err) {
@@ -159,7 +165,8 @@ export default function EventManagementDetails() {
       b._id.toLowerCase().includes(bookingSearch.toLowerCase());
 
     const matchesStatus =
-      selectedBookingStatus === "all" || b.bookingStatus === selectedBookingStatus;
+      selectedBookingStatus === "all" ||
+      b.bookingStatus === selectedBookingStatus;
 
     return matchesSearch && matchesStatus;
   });
@@ -179,7 +186,9 @@ export default function EventManagementDetails() {
     return (
       <div className="bg-white p-8 rounded-2xl shadow-md border border-red-200 text-center max-w-lg mx-auto my-8">
         <h2 className="text-xl font-bold text-red-600">Event Not Found</h2>
-        <p className="text-sm text-gray-600 mt-2">{error || "Unable to retrieve event information."}</p>
+        <p className="text-sm text-gray-600 mt-2">
+          {error || "Unable to retrieve event information."}
+        </p>
         <button
           onClick={() => navigate(-1)}
           className="mt-5 bg-[#34908B] text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-[#2b7873] transition"
@@ -218,10 +227,10 @@ export default function EventManagementDetails() {
               show.status === "published"
                 ? "bg-green-100 text-green-700"
                 : show.status === "cancelled"
-                ? "bg-red-100 text-red-700"
-                : show.status === "completed"
-                ? "bg-blue-100 text-blue-700"
-                : "bg-gray-100 text-gray-700"
+                  ? "bg-red-100 text-red-700"
+                  : show.status === "completed"
+                    ? "bg-blue-100 text-blue-700"
+                    : "bg-gray-100 text-gray-700"
             }`}
           >
             {show.status}
@@ -257,7 +266,10 @@ export default function EventManagementDetails() {
       {actionError && (
         <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl text-sm flex justify-between items-center">
           <span>{actionError}</span>
-          <button onClick={() => setActionError("")} className="font-bold text-red-900 hover:underline">
+          <button
+            onClick={() => setActionError("")}
+            className="font-bold text-red-900 hover:underline"
+          >
             Dismiss
           </button>
         </div>
@@ -267,7 +279,11 @@ export default function EventManagementDetails() {
       <div className="bg-white rounded-2xl shadow-md border border-[#8ce0d2] overflow-hidden">
         <div className="relative h-64 md:h-80 bg-gray-900 overflow-hidden">
           {bannerSrc ? (
-            <img src={bannerSrc} alt={show.name} className="w-full h-full object-cover opacity-90" />
+            <img
+              src={bannerSrc}
+              alt={show.name}
+              className="w-full h-full object-cover opacity-90"
+            />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-gray-400 font-semibold text-sm">
               No Banner Image Available
@@ -279,8 +295,12 @@ export default function EventManagementDetails() {
             <span className="bg-[#34908B] text-xs font-bold px-3 py-1 rounded-full uppercase">
               {show.genre}
             </span>
-            <h1 className="text-3xl font-extrabold mt-2 drop-shadow-md">{show.name}</h1>
-            <p className="text-sm opacity-90 mt-1">📍 {show.venue?.name}, {show.venue?.city}</p>
+            <h1 className="text-3xl font-extrabold mt-2 drop-shadow-md">
+              {show.name}
+            </h1>
+            <p className="text-sm opacity-90 mt-1">
+              📍 {show.venue?.name}, {show.venue?.city}
+            </p>
           </div>
         </div>
 
@@ -299,33 +319,45 @@ export default function EventManagementDetails() {
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
                 Ticket Price
               </span>
-              <p className="text-xl font-black text-[#34908B]">Rs. {show.price}</p>
+              <p className="text-xl font-black text-[#34908B]">
+                Rs. {show.price}
+              </p>
             </div>
             <div>
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
                 Tickets Sold
               </span>
-              <p className="text-xl font-black text-gray-800">{show.soldTickets} / {show.totalTickets}</p>
+              <p className="text-xl font-black text-gray-800">
+                {show.soldTickets} / {show.totalTickets}
+              </p>
             </div>
             <div>
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
                 Available
               </span>
-              <p className="text-xl font-black text-green-600">{show.availableTickets}</p>
+              <p className="text-xl font-black text-green-600">
+                {show.availableTickets}
+              </p>
             </div>
             <div>
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
                 Views
               </span>
-              <p className="text-xl font-black text-blue-600">👁️ {show.views || 0}</p>
+              <p className="text-xl font-black text-blue-600">
+                👁️ {show.views || 0}
+              </p>
             </div>
           </div>
 
           {/* Progress Bar */}
           <div>
             <div className="flex justify-between text-xs font-bold mb-1.5">
-              <span className="text-gray-600">Capacity Filled ({salesPercent}%)</span>
-              <span className="text-[#34908B]">{show.availableTickets} Remaining</span>
+              <span className="text-gray-600">
+                Capacity Filled ({salesPercent}%)
+              </span>
+              <span className="text-[#34908B]">
+                {show.availableTickets} Remaining
+              </span>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden border border-gray-200">
               <div
@@ -342,13 +374,21 @@ export default function EventManagementDetails() {
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs pt-1">
               <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-sm">
-                <span className="text-gray-500 block">Net Revenue (Earned)</span>
+                <span className="text-gray-500 block">
+                  Net Revenue (Earned)
+                </span>
                 <span className="text-lg font-extrabold text-emerald-700">
                   Rs. {revenueStats.totalRevenue.toLocaleString()}
                 </span>
                 <div className="text-[10px] text-gray-400 space-y-0.5 mt-1">
-                  <div>Confirmed: Rs. {revenueStats.confirmedRevenue.toLocaleString()}</div>
-                  <div>Cancellation Fees: Rs. {revenueStats.cancellationFeeRevenue.toLocaleString()}</div>
+                  <div>
+                    Confirmed: Rs.{" "}
+                    {revenueStats.confirmedRevenue.toLocaleString()}
+                  </div>
+                  <div>
+                    Cancellation Fees: Rs.{" "}
+                    {revenueStats.cancellationFeeRevenue.toLocaleString()}
+                  </div>
                 </div>
               </div>
 
@@ -363,7 +403,9 @@ export default function EventManagementDetails() {
               </div>
 
               <div className="bg-white p-3 rounded-xl border border-blue-100 shadow-sm">
-                <span className="text-gray-500 block">Max Potential Revenue</span>
+                <span className="text-gray-500 block">
+                  Max Potential Revenue
+                </span>
                 <span className="text-lg font-extrabold text-blue-700">
                   Rs. {maxPossibleRevenue.toLocaleString()}
                 </span>
@@ -376,7 +418,9 @@ export default function EventManagementDetails() {
             {/* Optional: Refunded totals info */}
             {revenueStats.totalRefundedAmount > 0 && (
               <div className="text-xs text-gray-500 bg-white/70 p-2 rounded-lg border border-gray-200">
-                <strong>Refunded Amount (full):</strong> Rs. {revenueStats.totalRefundedAmount.toLocaleString()} from {revenueStats.refundedCount} cancelled booking(s)
+                <strong>Refunded Amount (full):</strong> Rs.{" "}
+                {revenueStats.totalRefundedAmount.toLocaleString()} from{" "}
+                {revenueStats.refundedCount} cancelled booking(s)
               </div>
             )}
           </div>
@@ -389,8 +433,14 @@ export default function EventManagementDetails() {
                   📅 Event Timing
                 </h3>
                 <div className="bg-gray-50 p-4 rounded-xl space-y-1 text-sm border">
-                  <p><strong className="text-gray-700">Date:</strong> {formatDate(show.date)}</p>
-                  <p><strong className="text-gray-700">Hours:</strong> {show.startTime} - {show.endTime}</p>
+                  <p>
+                    <strong className="text-gray-700">Date:</strong>{" "}
+                    {formatDate(show.date)}
+                  </p>
+                  <p>
+                    <strong className="text-gray-700">Hours:</strong>{" "}
+                    {show.startTime} - {show.endTime}
+                  </p>
                   {show.bookingDeadline && (
                     <p className="text-red-600 font-medium text-xs mt-2">
                       ⏰ Booking Deadline: {formatDate(show.bookingDeadline)}
@@ -398,15 +448,42 @@ export default function EventManagementDetails() {
                   )}
                 </div>
               </div>
-
               <div>
                 <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
                   📍 Venue Details
                 </h3>
-                <div className="bg-gray-50 p-4 rounded-xl space-y-1 text-sm border">
+                <div className="bg-gray-50 p-4 rounded-xl space-y-2 text-sm border">
                   <p className="font-bold text-gray-800">{show.venue?.name}</p>
                   <p className="text-gray-600">{show.venue?.address}</p>
                   <p className="text-gray-600">{show.venue?.city}</p>
+
+                  {/* Coordinates and Map Button */}
+                  {show.venue?.location?.coordinates &&
+                    show.venue.location.coordinates.length === 2 && (
+                      <div className="flex items-center justify-between pt-2 border-t border-gray-200 mt-2">
+                        <div>
+                          <span className="text-xs text-gray-500">
+                            Coordinates:
+                          </span>
+                          <span className="text-xs font-mono text-gray-700 ml-1">
+                            {show.venue.location.coordinates[1]},{" "}
+                            {show.venue.location.coordinates[0]}
+                          </span>
+                          <span className="text-[10px] text-gray-400 block">
+                            (lat, lng)
+                          </span>
+                        </div>
+                        <a
+                          href={`https://www.google.com/maps?q=${show.venue.location.coordinates[1]},${show.venue.location.coordinates[0]}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-[#34908B] hover:bg-[#2b7873] text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 transition shadow-sm"
+                        >
+                          <MapPin className="w-3.5 h-3.5" />
+                          Open Maps
+                        </a>
+                      </div>
+                    )}
                 </div>
               </div>
 
@@ -417,15 +494,23 @@ export default function EventManagementDetails() {
                 <div className="bg-gray-50 p-4 rounded-xl space-y-2 text-sm border">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Max Tickets / User:</span>
-                    <span className="font-bold text-gray-800">{show.maxTicketsPerUser}</span>
+                    <span className="font-bold text-gray-800">
+                      {show.maxTicketsPerUser}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">QR Check-in:</span>
-                    <span className="font-bold text-gray-800">{show.qrEnabled ? "Enabled" : "Disabled"}</span>
+                    <span className="font-bold text-gray-800">
+                      {show.qrEnabled ? "Enabled" : "Disabled"}
+                    </span>
                   </div>
                   <div className="border-t pt-2 mt-2">
-                    <span className="text-gray-500 text-xs block">Refund Policy:</span>
-                    <p className="text-gray-700 font-medium text-xs mt-0.5">{show.refundPolicy}</p>
+                    <span className="text-gray-500 text-xs block">
+                      Refund Policy:
+                    </span>
+                    <p className="text-gray-700 font-medium text-xs mt-0.5">
+                      {show.refundPolicy}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -437,13 +522,20 @@ export default function EventManagementDetails() {
                   👤 Organizer Information
                 </h3>
                 <div className="bg-gray-50 p-4 rounded-xl text-sm border">
-                  {typeof show.organizerId === "object" && show.organizerId !== null ? (
+                  {typeof show.organizerId === "object" &&
+                  show.organizerId !== null ? (
                     <div>
-                      <p className="font-bold text-gray-800">{show.organizerId.name || "N/A"}</p>
-                      <p className="text-xs text-gray-500">{show.organizerId.email || "N/A"}</p>
+                      <p className="font-bold text-gray-800">
+                        {show.organizerId.name || "N/A"}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {show.organizerId.email || "N/A"}
+                      </p>
                     </div>
                   ) : (
-                    <p className="text-gray-600 font-mono text-xs">ID: {show.organizerId}</p>
+                    <p className="text-gray-600 font-mono text-xs">
+                      ID: {show.organizerId}
+                    </p>
                   )}
                 </div>
               </div>
@@ -469,7 +561,11 @@ export default function EventManagementDetails() {
                         className="flex items-center gap-2 bg-gray-50 border px-3 py-1.5 rounded-full text-xs font-semibold text-gray-700"
                       >
                         {artist.image && (
-                          <img src={artist.image} alt={artist.name} className="w-5 h-5 rounded-full object-cover" />
+                          <img
+                            src={artist.image}
+                            alt={artist.name}
+                            className="w-5 h-5 rounded-full object-cover"
+                          />
                         )}
                         <span>{artist.name}</span>
                       </div>
@@ -504,9 +600,12 @@ export default function EventManagementDetails() {
       <div className="bg-white rounded-2xl shadow-md border border-[#8ce0d2] p-6 md:p-8 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
           <div>
-            <h2 className="text-xl font-extrabold text-gray-800">🎟️ Bookings & Attendees</h2>
+            <h2 className="text-xl font-extrabold text-gray-800">
+              🎟️ Bookings & Attendees
+            </h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Total {bookings.length} booking transaction(s) recorded for this show
+              Total {bookings.length} booking transaction(s) recorded for this
+              show
             </p>
           </div>
 
@@ -551,22 +650,32 @@ export default function EventManagementDetails() {
                   <tr key={b._id} className="hover:bg-gray-50/80 transition">
                     <td className="px-4 py-3 font-mono font-bold text-gray-800">
                       #{b._id.slice(-6)}
-                      <div className="text-[10px] text-gray-400 font-sans">{b.transactionId || "No TxID"}</div>
+                      <div className="text-[10px] text-gray-400 font-sans">
+                        {b.transactionId || "No TxID"}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="font-bold text-gray-800">{b.userId?.name || "Deleted User"}</div>
-                      <div className="text-gray-500 text-[11px]">{b.userId?.email}</div>
+                      <div className="font-bold text-gray-800">
+                        {b.userId?.name || "Deleted User"}
+                      </div>
+                      <div className="text-gray-500 text-[11px]">
+                        {b.userId?.email}
+                      </div>
                     </td>
-                    <td className="px-4 py-3 font-bold text-gray-700">{b.totalTickets}</td>
-                    <td className="px-4 py-3 font-bold text-[#34908B]">Rs. {b.totalAmount}</td>
+                    <td className="px-4 py-3 font-bold text-gray-700">
+                      {b.totalTickets}
+                    </td>
+                    <td className="px-4 py-3 font-bold text-[#34908B]">
+                      Rs. {b.totalAmount}
+                    </td>
                     <td className="px-4 py-3">
                       <span
                         className={`px-2 py-0.5 rounded-full font-bold capitalize text-[10px] ${
                           b.paymentStatus === "paid"
                             ? "bg-emerald-100 text-emerald-700"
                             : b.paymentStatus === "pending"
-                            ? "bg-amber-100 text-amber-700"
-                            : "bg-red-100 text-red-700"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-red-100 text-red-700"
                         }`}
                       >
                         {b.paymentStatus}
@@ -578,8 +687,8 @@ export default function EventManagementDetails() {
                           b.bookingStatus === "confirmed"
                             ? "bg-green-100 text-green-700"
                             : b.bookingStatus === "pending"
-                            ? "bg-yellow-100 text-yellow-700"
-                            : "bg-red-100 text-red-700"
+                              ? "bg-yellow-100 text-yellow-700"
+                              : "bg-red-100 text-red-700"
                         }`}
                       >
                         {b.bookingStatus}
@@ -617,7 +726,8 @@ export default function EventManagementDetails() {
                   Booking #{inspectBooking._id.slice(-6)}
                 </h3>
                 <p className="text-xs text-gray-500">
-                  Booked on: {new Date(inspectBooking.createdAt).toLocaleString()}
+                  Booked on:{" "}
+                  {new Date(inspectBooking.createdAt).toLocaleString()}
                 </p>
               </div>
               <button
@@ -629,10 +739,24 @@ export default function EventManagementDetails() {
             </div>
 
             <div className="space-y-2 text-xs text-gray-600">
-              <p><strong>Customer:</strong> {inspectBooking.userId?.name} ({inspectBooking.userId?.email})</p>
-              <p><strong>Total Paid:</strong> <span className="font-bold text-[#34908B]">Rs. {inspectBooking.totalAmount}</span></p>
-              <p><strong>Payment Method:</strong> {inspectBooking.paymentMethod || "N/A"}</p>
-              <p><strong>Transaction ID:</strong> {inspectBooking.transactionId || "N/A"}</p>
+              <p>
+                <strong>Customer:</strong> {inspectBooking.userId?.name} (
+                {inspectBooking.userId?.email})
+              </p>
+              <p>
+                <strong>Total Paid:</strong>{" "}
+                <span className="font-bold text-[#34908B]">
+                  Rs. {inspectBooking.totalAmount}
+                </span>
+              </p>
+              <p>
+                <strong>Payment Method:</strong>{" "}
+                {inspectBooking.paymentMethod || "N/A"}
+              </p>
+              <p>
+                <strong>Transaction ID:</strong>{" "}
+                {inspectBooking.transactionId || "N/A"}
+              </p>
             </div>
 
             <h4 className="font-bold text-xs uppercase text-gray-400 tracking-wider pt-2">
@@ -646,21 +770,29 @@ export default function EventManagementDetails() {
                   className="flex items-center justify-between bg-gray-50 border p-3 rounded-xl text-xs"
                 >
                   <div>
-                    <span className="font-mono font-bold text-gray-800">{ticket.ticketId}</span>
+                    <span className="font-mono font-bold text-gray-800">
+                      {ticket.ticketId}
+                    </span>
                     {ticket.ticketType && (
                       <span className="ml-2 bg-teal-50 text-[#34908B] border border-teal-200 px-1.5 py-0.5 rounded text-[10px]">
                         {ticket.ticketType}
                       </span>
                     )}
                     {ticket.seatNumber && (
-                      <span className="ml-2 text-gray-500">Seat: {ticket.seatNumber}</span>
+                      <span className="ml-2 text-gray-500">
+                        Seat: {ticket.seatNumber}
+                      </span>
                     )}
                   </div>
                   <div>
                     {ticket.isCheckedIn ? (
-                      <span className="text-emerald-600 font-bold text-[10px]">✓ Checked In</span>
+                      <span className="text-emerald-600 font-bold text-[10px]">
+                        ✓ Checked In
+                      </span>
                     ) : (
-                      <span className="text-gray-400 text-[10px]">Not Checked In</span>
+                      <span className="text-gray-400 text-[10px]">
+                        Not Checked In
+                      </span>
                     )}
                   </div>
                 </div>
@@ -685,7 +817,8 @@ export default function EventManagementDetails() {
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-red-100 space-y-4">
             <h3 className="text-xl font-bold text-red-600">Delete Event</h3>
             <p className="text-sm text-gray-600">
-              Are you sure you want to permanently delete <strong>"{show.name}"</strong>? This action cannot be undone.
+              Are you sure you want to permanently delete{" "}
+              <strong>"{show.name}"</strong>? This action cannot be undone.
             </p>
 
             <div className="flex justify-end gap-3 pt-4 border-t">

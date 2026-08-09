@@ -1,11 +1,14 @@
 import Show from "../models/showModel.js";
 import Booking from "../models/bookingModel.js";
+import fetchCoordinates from "../utils/fetchcoordinates.js";
 
 // Helper to safely parse JSON strings sent via FormData
-const safeParse = (data, fallback = null) => {
-  if (typeof data !== "string") return data ?? fallback;
+export const safeParse = (data, fallback = null) => {
+  if (data === null || data === undefined) return fallback;
+  if (typeof data === "object") return data;
   try {
-    return JSON.parse(data);
+    const parsed = JSON.parse(data);
+    return parsed ?? fallback;
   } catch (error) {
     return fallback;
   }
@@ -37,11 +40,46 @@ export const createShow = async (req, res) => {
       });
     }
 
-    const tags = safeParse(req.body.tags, []);
-    const artists = safeParse(req.body.artists, []);
+    // --- 1.5 Fetch Coordinates automatically using Venue Details ---
+    let locationData = undefined;
 
-    // --- 2. Extract uploaded banner image ---
-    // Works with both req.file (single) and req.files (fields)
+    // First check if frontend manually sent coordinates
+    const inputLat = Number(venue.latitude ?? req.body.latitude);
+    const inputLng = Number(venue.longitude ?? req.body.longitude);
+
+    if (!isNaN(inputLat) && !isNaN(inputLng)) {
+      locationData = {
+        type: "Point",
+        coordinates: [inputLng, inputLat],
+      };
+    } else {
+      // Automatically fetch coordinates from OpenStreetMap API
+      const coords = await fetchCoordinates(
+        venue.address,
+        venue.city,
+        venue.name,
+      );
+
+      if (coords) {
+        locationData = {
+          type: "Point",
+          coordinates: [coords.lng, coords.lat], // GeoJSON: [Longitude, Latitude]
+        };
+      }
+    }
+
+    // --- 2. Safe Array Parsing for Tags & Artists ---
+    const parsedTags = safeParse(req.body.tags, []);
+    const parsedArtists = safeParse(req.body.artists, []);
+
+    const tags = Array.isArray(parsedTags) ? parsedTags : [];
+    const artists = Array.isArray(parsedArtists)
+      ? parsedArtists.filter(
+          (item) => typeof item === "object" && item !== null,
+        )
+      : [];
+
+    // --- 3. Extract uploaded banner image ---
     let bannerImagePath = "";
     if (req.files?.bannerImage?.[0]) {
       bannerImagePath =
@@ -52,7 +90,7 @@ export const createShow = async (req, res) => {
       bannerImagePath = req.file.path || req.file.secure_url || "";
     }
 
-    // --- 3. Validate Price & Tickets ---
+    // --- 4. Validate Price & Tickets ---
     const price = Number(req.body.price);
     const totalTickets = Number(req.body.totalTickets);
     const availableTickets = Number(req.body.availableTickets);
@@ -71,14 +109,14 @@ export const createShow = async (req, res) => {
       });
     }
 
-    // --- 4. Build show object matching ShowSchema ---
+    // --- 5. Build show object matching ShowSchema ---
     const showData = {
       name: req.body.name,
       description: req.body.description,
       genre: req.body.genre,
       bannerImage: bannerImagePath,
-      tags: Array.isArray(tags) ? tags : [],
-      artists: Array.isArray(artists) ? artists : [],
+      tags,
+      artists,
       date: req.body.date ? new Date(req.body.date) : undefined,
       startTime: req.body.startTime,
       endTime: req.body.endTime,
@@ -86,6 +124,7 @@ export const createShow = async (req, res) => {
         name: venue.name,
         city: venue.city,
         address: venue.address,
+        ...(locationData && { location: locationData }),
       },
       price,
       totalTickets,
@@ -101,7 +140,7 @@ export const createShow = async (req, res) => {
       organizerId,
     };
 
-    // --- 5. Save to database ---
+    // --- 6. Save to database ---
     const show = await Show.create(showData);
 
     return res.status(201).json({
@@ -112,7 +151,6 @@ export const createShow = async (req, res) => {
   } catch (error) {
     console.error("Create show error:", error);
 
-    // Mongoose Validation Error formatting
     if (error.name === "ValidationError") {
       const errors = Object.keys(error.errors).map((field) => ({
         field,
@@ -282,10 +320,9 @@ export const updateShow = async (req, res) => {
       });
     }
 
-    // --- Build update object ---
     const updateData = {};
 
-    // Scalars
+    // --- 1. Scalars ---
     const scalarFields = [
       "name",
       "description",
@@ -299,7 +336,8 @@ export const updateShow = async (req, res) => {
       if (req.body[field] !== undefined) updateData[field] = req.body[field];
     });
 
-    // Numeric fields
+    // --- 2. Numeric fields & Dates ---
+    if (req.body.price !== undefined) updateData.price = Number(req.body.price);
     if (req.body.totalTickets !== undefined)
       updateData.totalTickets = Number(req.body.totalTickets);
     if (req.body.availableTickets !== undefined)
@@ -307,59 +345,148 @@ export const updateShow = async (req, res) => {
     if (req.body.maxTicketsPerUser !== undefined)
       updateData.maxTicketsPerUser = Number(req.body.maxTicketsPerUser);
 
-    // Dates
     if (req.body.date) updateData.date = new Date(req.body.date);
     if (req.body.bookingDeadline)
       updateData.bookingDeadline = new Date(req.body.bookingDeadline);
 
-    // JSON fields
-    const jsonFields = ["venue", "tags", "artists", "ticketTypes"];
-    jsonFields.forEach((field) => {
-      if (req.body[field] !== undefined) {
-        const parsed = safeParse(req.body[field]);
-        if (parsed === undefined || parsed === null) {
-          return res.status(400).json({
-            success: false,
-            message: `Invalid ${field} format`,
-          });
-        }
-        // For venue, ensure required sub‑fields exist
-        if (
-          field === "venue" &&
-          (!parsed.name || !parsed.city || !parsed.address)
-        ) {
-          return res.status(400).json({
-            success: false,
-            message: "Venue must have name, city, and address",
-          });
-        }
-        updateData[field] = parsed;
+    // --- 3. Parse Array Fields (tags & artists) ---
+    if (req.body.tags !== undefined) {
+      const parsedTags = safeParse(req.body.tags, []);
+      updateData.tags = Array.isArray(parsedTags) ? parsedTags : [];
+    }
+
+    if (req.body.artists !== undefined) {
+      const parsedArtists = safeParse(req.body.artists, []);
+      updateData.artists = Array.isArray(parsedArtists)
+        ? parsedArtists.filter(
+            (item) => typeof item === "object" && item !== null,
+          )
+        : [];
+    }
+
+    // --- 4. Venue & Coordinates Handling ---
+    if (req.body.venue !== undefined) {
+      const venue = safeParse(req.body.venue, {});
+
+      if (
+        !venue ||
+        typeof venue !== "object" ||
+        !venue.name ||
+        !venue.city ||
+        !venue.address
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Venue must have name, city, and address",
+        });
       }
-    });
 
-    // --- Files ---
-    const imageFile = req.files?.image?.[0];
-    const bannerFile = req.files?.bannerImage?.[0];
-    if (imageFile) updateData.image = imageFile.path;
-    if (bannerFile) updateData.bannerImage = bannerFile.path;
+      // Check existing document location
+      let locationData = show.venue?.location
+        ? { ...show.venue.location }
+        : null;
 
-    // --- Update ---
+      // Extract manual lat/lng inputs
+      const rawLat = venue.latitude ?? req.body.latitude;
+      const rawLng = venue.longitude ?? req.body.longitude;
+
+      const inputLat =
+        rawLat !== null && rawLat !== undefined && String(rawLat).trim() !== ""
+          ? Number(rawLat)
+          : NaN;
+      const inputLng =
+        rawLng !== null && rawLng !== undefined && String(rawLng).trim() !== ""
+          ? Number(rawLng)
+          : NaN;
+
+      // Case A: Explicit Manual Coordinates Provided
+      if (!isNaN(inputLat) && !isNaN(inputLng)) {
+        locationData = {
+          type: "Point",
+          coordinates: [inputLng, inputLat], // GeoJSON order: [Longitude, Latitude]
+        };
+      } else {
+        // Case B: Trigger Geocoding if venue changed or coordinates missing
+        const oldVenue = show.venue || {};
+        const hasVenueChanged =
+          (venue.name || "").trim() !== (oldVenue.name || "").trim() ||
+          (venue.address || "").trim() !== (oldVenue.address || "").trim() ||
+          (venue.city || "").trim() !== (oldVenue.city || "").trim();
+
+        if (hasVenueChanged || !locationData?.coordinates?.length) {
+          const coords = await fetchCoordinates(
+            venue.address,
+            venue.city,
+            venue.name,
+          );
+
+          if (coords) {
+            locationData = {
+              type: "Point",
+              coordinates: [coords.lng, coords.lat],
+            };
+          }
+        }
+      }
+
+      // Explicitly construct updateData.venue object
+      updateData.venue = {
+        name: venue.name,
+        city: venue.city,
+        address: venue.address,
+      };
+
+      if (locationData && Array.isArray(locationData.coordinates)) {
+        updateData.venue.location = locationData;
+      }
+    }
+
+    // --- 5. File Uploads ---
+    let bannerImagePath = "";
+    if (req.files?.bannerImage?.[0]) {
+      bannerImagePath =
+        req.files.bannerImage[0].path ||
+        req.files.bannerImage[0].secure_url ||
+        "";
+    } else if (req.file) {
+      bannerImagePath = req.file.path || req.file.secure_url || "";
+    }
+
+    if (bannerImagePath) {
+      updateData.bannerImage = bannerImagePath;
+    }
+
+    // --- 6. Save Updates to DB ---
     const updatedShow = await Show.findByIdAndUpdate(
       id,
       { $set: updateData },
       { new: true, runValidators: true },
     );
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Show updated successfully",
       show: updatedShow,
     });
   } catch (error) {
     console.error("Update show error:", error);
-    res.status(500).json({
+
+    if (error.name === "ValidationError") {
+      const errors = Object.keys(error.errors).map((field) => ({
+        field,
+        message: error.errors[field].message,
+      }));
+
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed.",
+        errors,
+      });
+    }
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || "Internal server error",
     });
   }
 };

@@ -1,6 +1,24 @@
 import { useEffect, useState, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { AuthContext } from "../store/AuthContext";
+import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+// Helper component for drawing route lines on the Leaflet map
+import RoutingControl from "./RoutingControl";
+
+// Fix standard Leaflet marker icon path bug in React
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconUrl: markerIcon,
+  iconRetinaUrl: markerIcon2x,
+  shadowUrl: markerShadow,
+});
 
 export default function EventDetail() {
   const { API } = useContext(AuthContext);
@@ -12,6 +30,11 @@ export default function EventDetail() {
   const [error, setError] = useState("");
   const [ticketQuantity, setTicketQuantity] = useState(1);
   const [selectedTicketType, setSelectedTicketType] = useState("");
+
+  // Directions state
+  const [userCoords, setUserCoords] = useState(null);
+  const [gettingLocation, setGettingLocation] = useState(false);
+  const [locationError, setLocationError] = useState("");
 
   useEffect(() => {
     const fetchShowDetail = async () => {
@@ -27,7 +50,7 @@ export default function EventDetail() {
         }
 
         setShow(data.show);
-        
+
         // Auto-select first ticket type if available
         if (data.show?.ticketTypes?.length > 0) {
           setSelectedTicketType(data.show.ticketTypes[0].name);
@@ -43,14 +66,62 @@ export default function EventDetail() {
   }, [API, id]);
 
   const handleBooking = () => {
-    // Navigate to payment page with required state
     navigate(`/booking/payment/${id}`, {
-      state: { 
-        show, 
+      state: {
+        show,
         quantity: ticketQuantity,
-        ticketType: selectedTicketType || show?.ticketTypes?.[0]?.name || "Standard" 
+        ticketType:
+          selectedTicketType || show?.ticketTypes?.[0]?.name || "Standard",
       },
     });
+  };
+
+  // Coordinates extraction [lng, lat] from GeoJSON
+  const coordinates = show?.venue?.location?.coordinates;
+  const hasCoordinates =
+    Array.isArray(coordinates) &&
+    coordinates.length === 2 &&
+    !isNaN(coordinates[0]) &&
+    !isNaN(coordinates[1]);
+
+  // Leaflet expects [Latitude, Longitude]
+  const mapPosition = hasCoordinates ? [coordinates[1], coordinates[0]] : null;
+
+  // Request browser geolocation to render directions on the map
+  const handleGetDirections = () => {
+    setLocationError("");
+    setGettingLocation(true);
+
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserCoords([position.coords.latitude, position.coords.longitude]);
+          setGettingLocation(false);
+        },
+        (err) => {
+          setGettingLocation(false);
+          setLocationError(
+            "Unable to retrieve your location. Please check browser permissions.",
+          );
+        },
+        { enableHighAccuracy: true, timeout: 10000 },
+      );
+    } else {
+      setGettingLocation(false);
+      setLocationError("Geolocation is not supported by your browser.");
+    }
+  };
+
+  // Open native navigation app (Google Maps or Apple Maps)
+  const openNativeNavigation = () => {
+    if (!mapPosition) return;
+    const [lat, lng] = mapPosition;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const navUrl = isIOS
+      ? `http://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`
+      : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+
+    window.open(navUrl, "_blank", "noopener,noreferrer");
   };
 
   if (loading) {
@@ -88,19 +159,17 @@ export default function EventDetail() {
     );
   }
 
-  const selectedTypeInfo = show.ticketTypes?.find((t) => t.name === selectedTicketType) || show.ticketTypes?.[0];
+  const selectedTypeInfo =
+    show.ticketTypes?.find((t) => t.name === selectedTicketType) ||
+    show.ticketTypes?.[0];
   const unitPrice = selectedTypeInfo?.price || show.price || 0;
   const availableQty = selectedTypeInfo?.quantity ?? show.availableTickets ?? 0;
 
-  const maxSelectable = Math.min(
-    show.maxTicketsPerUser || 5,
-    availableQty
-  );
+  const maxSelectable = Math.min(show.maxTicketsPerUser || 5, availableQty);
 
   return (
     <div className="min-h-screen bg-[#FDF4AF] py-10 px-4 md:px-8">
       <div className="max-w-5xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-[#8ce0d2]">
-        
         {/* Banner Image */}
         {show.bannerImage ? (
           <img
@@ -119,7 +188,6 @@ export default function EventDetail() {
         )}
 
         <div className="p-6 md:p-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
           {/* Main Content (Left 2 Columns) */}
           <div className="lg:col-span-2 space-y-6">
             <div>
@@ -158,10 +226,10 @@ export default function EventDetail() {
               </p>
             </div>
 
-            {/* Date & Venue */}
-            <div className="bg-[#FDF4AF]/40 rounded-xl p-5 border border-yellow-200 space-y-3">
+            {/* Date & Venue Section with Map and Directions */}
+            <div className="bg-[#FDF4AF]/40 rounded-xl p-5 border border-yellow-200 space-y-4">
               <h2 className="text-lg font-bold text-gray-800">Date & Venue</h2>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-700">
                 <div>
                   <p className="font-semibold text-gray-900">📅 Date & Time</p>
@@ -185,13 +253,97 @@ export default function EventDetail() {
                   <p className="text-gray-500">{show.venue?.city}</p>
                 </div>
               </div>
+
+              {/* Interactive Map & Directions Toolbar */}
+              {mapPosition ? (
+                <div className="space-y-3 mt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      onClick={handleGetDirections}
+                      disabled={gettingLocation}
+                      className="bg-[#34908B] text-white text-xs px-3 py-2 rounded-lg hover:bg-[#2b7873] transition font-semibold disabled:opacity-50 shadow-sm"
+                    >
+                      {gettingLocation
+                        ? "Locating..."
+                        : userCoords
+                          ? "🔄 Recalculate Route"
+                          : "🚗 Show Route on Map"}
+                    </button>
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${mapPosition[0]},${mapPosition[1]}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 bg-white border border-gray-300 text-gray-700 text-xs px-3 py-2 rounded-lg hover:bg-gray-50 transition font-semibold shadow-sm"
+                    >
+                      <svg
+                        className="w-4 h-4 text-red-500"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+                      </svg>
+                      Open in Google Maps
+                    </a>
+                    <button
+                      onClick={openNativeNavigation}
+                      className="border border-[#34908B] text-[#34908B] text-xs px-3 py-2 rounded-lg hover:bg-[#34908B]/10 transition font-semibold"
+                    >
+                      ↗ Turn-by-Turn Navigation
+                    </button>
+                  </div>
+
+                  {locationError && (
+                    <p className="text-xs text-red-500">{locationError}</p>
+                  )}
+
+                  {/* Leaflet Map */}
+                  <div className="w-full h-72 rounded-xl overflow-hidden border border-gray-300 z-0">
+                    <MapContainer
+                      center={mapPosition}
+                      zoom={14}
+                      scrollWheelZoom={false}
+                      style={{ height: "100%", width: "100%" }}
+                    >
+                      <TileLayer
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      />
+
+                      {/* Venue Marker */}
+                      <Marker position={mapPosition}>
+                        <Popup>
+                          <strong>{show.venue?.name}</strong> <br />
+                          {show.venue?.address}, {show.venue?.city}
+                        </Popup>
+                      </Marker>
+
+                      {/* User Location Marker */}
+                      {userCoords && (
+                        <Marker position={userCoords}>
+                          <Popup>Your Current Location</Popup>
+                        </Marker>
+                      )}
+
+                      {/* Routing Line Layer */}
+                      {userCoords && (
+                        <RoutingControl
+                          userCoords={userCoords}
+                          venueCoords={mapPosition}
+                        />
+                      )}
+                    </MapContainer>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-gray-100 text-gray-500 text-xs text-center py-4 rounded-lg border border-dashed border-gray-300 mt-2">
+                  Map coordinates unavailable for this venue
+                </div>
+              )}
             </div>
           </div>
 
           {/* Ticket Booking Sidebar (Right Column) */}
           <div className="bg-[#A5E9DD]/30 border border-[#8ce0d2] rounded-xl p-6 h-fit space-y-6">
-            
-            {/* Ticket Type Selector (If show has multiple ticket types) */}
             {show.ticketTypes?.length > 0 && (
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -247,7 +399,7 @@ export default function EventDetail() {
                         <option key={num} value={num}>
                           {num} {num === 1 ? "Ticket" : "Tickets"}
                         </option>
-                      )
+                      ),
                     )}
                   </select>
                 </div>
@@ -272,7 +424,6 @@ export default function EventDetail() {
               </div>
             )}
           </div>
-
         </div>
       </div>
     </div>
