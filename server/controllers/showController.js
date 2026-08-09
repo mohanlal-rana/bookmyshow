@@ -40,46 +40,44 @@ export const createShow = async (req, res) => {
       });
     }
 
-    // --- 1.5 Fetch Coordinates automatically using Venue Details ---
+    // --- 2. Fetch Coordinates automatically using Venue Details ---
     let locationData = undefined;
 
-    // First check if frontend manually sent coordinates
     const inputLat = Number(venue.latitude ?? req.body.latitude);
     const inputLng = Number(venue.longitude ?? req.body.longitude);
 
-    if (!isNaN(inputLat) && !isNaN(inputLng)) {
+    if (!isNaN(inputLat) && !isNaN(inputLng) && inputLat !== 0 && inputLng !== 0) {
       locationData = {
         type: "Point",
         coordinates: [inputLng, inputLat],
       };
     } else {
-      // Automatically fetch coordinates from OpenStreetMap API
       const coords = await fetchCoordinates(
         venue.address,
         venue.city,
-        venue.name,
+        venue.name
       );
 
       if (coords) {
         locationData = {
           type: "Point",
-          coordinates: [coords.lng, coords.lat], // GeoJSON: [Longitude, Latitude]
+          coordinates: [coords.lng, coords.lat],
         };
       }
     }
 
-    // --- 2. Safe Array Parsing for Tags & Artists ---
+    // --- 3. Parse Arrays ---
     const parsedTags = safeParse(req.body.tags, []);
     const parsedArtists = safeParse(req.body.artists, []);
 
     const tags = Array.isArray(parsedTags) ? parsedTags : [];
     const artists = Array.isArray(parsedArtists)
       ? parsedArtists.filter(
-          (item) => typeof item === "object" && item !== null,
+          (item) => typeof item === "object" && item !== null
         )
       : [];
 
-    // --- 3. Extract uploaded banner image ---
+    // --- 4. Extract uploaded banner image ---
     let bannerImagePath = "";
     if (req.files?.bannerImage?.[0]) {
       bannerImagePath =
@@ -90,10 +88,9 @@ export const createShow = async (req, res) => {
       bannerImagePath = req.file.path || req.file.secure_url || "";
     }
 
-    // --- 4. Validate Price & Tickets ---
+    // --- 5. Validate Price & Tickets ---
     const price = Number(req.body.price);
     const totalTickets = Number(req.body.totalTickets);
-    const availableTickets = Number(req.body.availableTickets);
 
     if (isNaN(price) || price < 0) {
       return res.status(400).json({
@@ -109,7 +106,7 @@ export const createShow = async (req, res) => {
       });
     }
 
-    // --- 5. Build show object matching ShowSchema ---
+    // --- 6. Build show object matching ShowSchema ---
     const showData = {
       name: req.body.name,
       description: req.body.description,
@@ -128,9 +125,7 @@ export const createShow = async (req, res) => {
       },
       price,
       totalTickets,
-      availableTickets: isNaN(availableTickets)
-        ? totalTickets
-        : availableTickets,
+      availableTickets: totalTickets,
       maxTicketsPerUser: Number(req.body.maxTicketsPerUser) || 5,
       refundPolicy: req.body.refundPolicy || "No refund available",
       status: req.body.status || "published",
@@ -140,7 +135,7 @@ export const createShow = async (req, res) => {
       organizerId,
     };
 
-    // --- 6. Save to database ---
+    // --- 7. Save to database ---
     const show = await Show.create(showData);
 
     return res.status(201).json({
@@ -149,8 +144,9 @@ export const createShow = async (req, res) => {
       show,
     });
   } catch (error) {
-    console.error("Create show error:", error);
+    console.error("🔴 Create show error:", error);
 
+    // Mongoose Validation Errors
     if (error.name === "ValidationError") {
       const errors = Object.keys(error.errors).map((field) => ({
         field,
@@ -161,6 +157,15 @@ export const createShow = async (req, res) => {
         success: false,
         message: "Validation failed.",
         errors,
+      });
+    }
+
+    // Zod Validation Errors (if executed backend-side)
+    if (error.errors && Array.isArray(error.errors)) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed.",
+        errors: error.errors,
       });
     }
 

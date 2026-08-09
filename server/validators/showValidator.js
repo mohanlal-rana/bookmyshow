@@ -62,9 +62,8 @@ export const showCreateSchema = z
       .number({ invalid_type_error: "Total tickets must be a number" })
       .min(1, "Total tickets must be at least 1"),
 
-    availableTickets: z.coerce
-      .number({ invalid_type_error: "Available tickets must be a number" })
-      .min(0, "Available tickets cannot be negative"),
+    // Optional field; defaults to totalTickets during validation check if omitted
+    availableTickets: z.coerce.number().min(0).optional(),
 
     soldTickets: z.coerce.number().min(0).optional().default(0),
 
@@ -81,14 +80,23 @@ export const showCreateSchema = z
 
     qrEnabled: z.boolean().optional().default(true),
   })
-  .refine((data) => data.availableTickets <= data.totalTickets, {
-    message: "Available tickets cannot exceed total tickets",
-    path: ["availableTickets"],
-  })
-  .refine((data) => new Date(data.date) >= new Date(new Date().setHours(0, 0, 0, 0)), {
-    message: "Show date cannot be in the past",
-    path: ["date"],
-  });
+  .refine(
+    (data) => {
+      const avail = data.availableTickets ?? data.totalTickets;
+      return avail <= data.totalTickets;
+    },
+    {
+      message: "Available tickets cannot exceed total tickets",
+      path: ["availableTickets"],
+    }
+  )
+  .refine(
+    (data) => new Date(data.date) >= new Date(new Date().setHours(0, 0, 0, 0)),
+    {
+      message: "Show date cannot be in the past",
+      path: ["date"],
+    }
+  );
 
 // ================= UPDATE SCHEMA =================
 export const showUpdateSchema = z.object({

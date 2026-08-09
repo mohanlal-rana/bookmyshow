@@ -18,7 +18,7 @@ export default function AddEvent() {
     city: "",
     address: "",
     totalTickets: "",
-    // availableTickets: "",
+    availableTickets: "",
     price: "",
     maxTicketsPerUser: 5,
     // refundPolicy: "No refund available",
@@ -105,7 +105,7 @@ export default function AddEvent() {
 
       // Numeric Ticket Details
       form.append("totalTickets", Number(formData.totalTickets));
-      // form.append("availableTickets", Number(formData.availableTickets));
+      form.append("availableTickets", Number(formData.totalTickets)); // Defaults to totalTickets if not specified
       form.append("price", Number(formData.price));
       form.append("maxTicketsPerUser", Number(formData.maxTicketsPerUser));
 
@@ -148,7 +148,7 @@ export default function AddEvent() {
           "Server returned an invalid response. Check the backend terminal for details."
         );
       }
-
+console.log(data)
       if (!res.ok) {
         if (Array.isArray(data.errors)) {
           const errors = {};
