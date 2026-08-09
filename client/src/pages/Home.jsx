@@ -4,9 +4,15 @@ import { AuthContext } from "../store/AuthContext";
 import RecommendedShows from "./RecommendedShows.jsx";
 
 export default function Home() {
-  const { API } = useContext(AuthContext);
+  const { API, user } = useContext(AuthContext);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    if (user?.role === "checker") {
+      navigate("/checker", { replace: true });
+    }
+  }, [user, navigate]);
+  
   const [shows, setShows] = useState([]);
   const [search, setSearch] = useState("");
   const [city, setCity] = useState("");
@@ -40,7 +46,7 @@ export default function Home() {
         setLoading(false);
       }
     },
-    [API]
+    [API],
   );
 
   // Debounce search & city inputs for real-time filtering as user types
@@ -127,9 +133,9 @@ export default function Home() {
           )}
         </form>
       </div>
-{/* Recommended Shows Section */}
+      {/* Recommended Shows Section */}
 
-<RecommendedShows/>
+      <RecommendedShows />
       {/* SHOWS SECTION */}
       <div className="px-6 py-10 max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-6">

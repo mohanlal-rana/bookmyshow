@@ -10,6 +10,7 @@ import showRouter from "./routers/showRouter.js";
 import bookingRouter from "./routers/bookingRouter.js";
 import userRouter from "./routers/userRouter.js";
 import checkRouter from "./routers/checkRouter.js";
+import dashboardRouter from "./routers/dashboardRouter.js";
 
 dotenv.config();
 
@@ -47,6 +48,7 @@ app.use("/api/shows", showRouter);
 app.use("/api/bookings", bookingRouter);
 app.use("/api/users", userRouter);
 app.use("/api/tickets", checkRouter); // For ticket scanning and verification
+app.use("/api",dashboardRouter); // For dashboard data
 
 // ================= START SERVER =================
 const startServer = async () => {

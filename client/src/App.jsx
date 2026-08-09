@@ -28,6 +28,7 @@ import TicketScanner from "./pages/checker/TicketScanner";
 import CheckerLayout from "./components/CheckerLayout";
 import CheckerDashboard from "./pages/checker/CheckerDashboard";
 import SearchTicket from "./pages/checker/SearchTicket";
+import Profile from "./pages/Profile";
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/profile" element={<Profile />} />
         <Route path="/event/:id" element={<EventDetail />} />
         <Route path="/booking/payment/:id" element={<MakePayment />} />
         <Route path="/payment/success" element={<PaymentSuccess />} />
