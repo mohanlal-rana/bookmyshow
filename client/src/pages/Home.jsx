@@ -4,7 +4,7 @@ import { AuthContext } from "../store/AuthContext";
 import RecommendedShows from "./RecommendedShows.jsx";
 
 export default function Home() {
-  const { API, user } = useContext(AuthContext);
+  const { API, user, token } = useContext(AuthContext);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -12,12 +12,20 @@ export default function Home() {
       navigate("/checker", { replace: true });
     }
   }, [user, navigate]);
-  
+
   const [shows, setShows] = useState([]);
+  const [savedEventIds, setSavedEventIds] = useState([]);
   const [search, setSearch] = useState("");
   const [city, setCity] = useState("");
   const [genre, setGenre] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Sync saved events state from user context
+  useEffect(() => {
+    if (user && user.savedEvents) {
+      setSavedEventIds(user.savedEvents.map((e) => (typeof e === "object" ? e._id : e)));
+    }
+  }, [user]);
 
   // Fetch shows dynamically with query params
   const fetchShows = useCallback(
@@ -46,7 +54,7 @@ export default function Home() {
         setLoading(false);
       }
     },
-    [API],
+    [API]
   );
 
   // Debounce search & city inputs for real-time filtering as user types
@@ -57,6 +65,31 @@ export default function Home() {
 
     return () => clearTimeout(timer);
   }, [search, city, genre, fetchShows]);
+
+  // Toggle Save Show Handler
+  const handleToggleSave = async (e, showId) => {
+    e.stopPropagation(); // Prevent navigating to details page
+
+    try {
+      const res = await fetch(`${API}/api/shows/saved/${showId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include", // Include cookies for authentication
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setSavedEventIds(data.savedEvents);
+      } else {
+        alert(data.message || "Failed to save show.");
+      }
+    } catch (err) {
+      console.error("Error toggling save show:", err);
+    }
+  };
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -73,9 +106,7 @@ export default function Home() {
     <div className="min-h-screen bg-[#FDF4AF]">
       {/* HERO SECTION */}
       <div className="bg-[#6FBEB2] text-white py-20 px-4 text-center rounded-b-3xl shadow-lg">
-        <h1 className="text-4xl md:text-5xl font-bold">
-          Book Amazing Shows 🎟️
-        </h1>
+        <h1 className="text-4xl md:text-5xl font-bold">Book Amazing Shows 🎟️</h1>
         <p className="mt-3 text-sm md:text-base opacity-90">
           Discover concerts, events & experiences near you
         </p>
@@ -133,9 +164,9 @@ export default function Home() {
           )}
         </form>
       </div>
-      {/* Recommended Shows Section */}
 
       <RecommendedShows />
+
       {/* SHOWS SECTION */}
       <div className="px-6 py-10 max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-6">
@@ -171,70 +202,83 @@ export default function Home() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {shows.map((show) => (
-              <div
-                key={show._id}
-                className="bg-[#A5E9DD] rounded-xl overflow-hidden shadow-md hover:shadow-xl transition flex flex-col justify-between border border-[#8ce0d2]"
-              >
-                <div>
-                  {/* Banner Image Display */}
-                  {show.bannerImage ? (
-                    <img
-                      src={
-                        show.bannerImage.startsWith("http")
-                          ? show.bannerImage
-                          : `${API}/${show.bannerImage}`
-                      }
-                      alt={show.name}
-                      className="w-full h-44 object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-44 bg-gradient-to-r from-[#34908B] to-[#2b7873] flex items-center justify-center text-white font-bold text-lg px-2 text-center">
-                      {show.name}
-                    </div>
-                  )}
+            {shows.map((show) => {
+              const isSaved = savedEventIds.includes(show._id);
 
-                  <div className="p-4">
-                    <div className="flex justify-between items-start gap-2">
-                      <h3 className="text-lg font-bold text-[#0f3d3a] line-clamp-1">
+              return (
+                <div
+                  key={show._id}
+                  className="bg-[#A5E9DD] rounded-xl overflow-hidden shadow-md hover:shadow-xl transition flex flex-col justify-between border border-[#8ce0d2] relative"
+                >
+                  {/* Save/Bookmark Button */}
+                  <button
+                    onClick={(e) => handleToggleSave(e, show._id)}
+                    className="absolute top-3 right-3 z-10 bg-white/80 backdrop-blur-md p-2 rounded-full shadow hover:bg-white transition"
+                    title={isSaved ? "Unsave event" : "Save event"}
+                  >
+                    {isSaved ? "❤️" : "🤍"}
+                  </button>
+
+                  <div>
+                    {/* Banner Image Display */}
+                    {show.bannerImage ? (
+                      <img
+                        src={
+                          show.bannerImage.startsWith("http")
+                            ? show.bannerImage
+                            : `${API}/${show.bannerImage}`
+                        }
+                        alt={show.name}
+                        className="w-full h-44 object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-44 bg-gradient-to-r from-[#34908B] to-[#2b7873] flex items-center justify-center text-white font-bold text-lg px-2 text-center">
                         {show.name}
-                      </h3>
-                      <span className="bg-[#34908B] text-white text-xs px-2 py-0.5 rounded font-semibold whitespace-nowrap">
-                        {show.price ? `Rs. ${show.price}` : "Free"}
-                      </span>
-                    </div>
+                      </div>
+                    )}
 
-                    <div className="mt-2 space-y-1 text-sm text-[#184e4a]">
-                      <p className="flex items-center gap-1">
-                        <span>🎭</span> {show.genre}
-                      </p>
-                      <p className="flex items-center gap-1">
-                        <span>📍</span> {show.venue?.city || "Location TBA"}
-                      </p>
-                      {show.date && (
+                    <div className="p-4">
+                      <div className="flex justify-between items-start gap-2">
+                        <h3 className="text-lg font-bold text-[#0f3d3a] line-clamp-1">
+                          {show.name}
+                        </h3>
+                        <span className="bg-[#34908B] text-white text-xs px-2 py-0.5 rounded font-semibold whitespace-nowrap">
+                          {show.price ? `Rs. ${show.price}` : "Free"}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 space-y-1 text-sm text-[#184e4a]">
                         <p className="flex items-center gap-1">
-                          <span>📅</span>{" "}
-                          {new Date(show.date).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })}
+                          <span>🎭</span> {show.genre}
                         </p>
-                      )}
+                        <p className="flex items-center gap-1">
+                          <span>📍</span> {show.venue?.city || "Location TBA"}
+                        </p>
+                        {show.date && (
+                          <p className="flex items-center gap-1">
+                            <span>📅</span>{" "}
+                            {new Date(show.date).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="p-4 pt-0">
-                  <button
-                    onClick={() => navigate(`/event/${show._id}`)}
-                    className="w-full bg-[#34908B] text-white py-2 rounded-lg font-medium hover:bg-[#2f7f7a] transition shadow-sm"
-                  >
-                    View Details
-                  </button>
+                  <div className="p-4 pt-0">
+                    <button
+                      onClick={() => navigate(`/event/${show._id}`)}
+                      className="w-full bg-[#34908B] text-white py-2 rounded-lg font-medium hover:bg-[#2f7f7a] transition shadow-sm"
+                    >
+                      View Details
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

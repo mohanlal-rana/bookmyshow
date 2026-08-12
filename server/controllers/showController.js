@@ -1,6 +1,7 @@
 import Show from "../models/showModel.js";
 import Booking from "../models/bookingModel.js";
 import fetchCoordinates from "../utils/fetchcoordinates.js";
+import User from "../models/userModel.js";
 
 // Helper to safely parse JSON strings sent via FormData
 export const safeParse = (data, fallback = null) => {
@@ -895,5 +896,65 @@ export const getRecommendedShows = async (req, res) => {
       success: false,
       message: "Failed to fetch recommendations",
     });
+  }
+};
+
+export const toggleSaveShow = async (req, res) => {
+  try {
+    const userId = req.user._id || req.user.id;
+    const { showId } = req.params;
+
+    // Validate show existence
+    const show = await Show.findById(showId);
+    if (!show) {
+      return res.status(404).json({ success: false, message: "Show not found" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Check if the event is already saved
+    const isSaved = user.savedEvents.includes(showId);
+
+    if (isSaved) {
+      // Remove from savedEvents
+      user.savedEvents = user.savedEvents.filter(
+        (id) => id.toString() !== showId.toString()
+      );
+    } else {
+      // Add to savedEvents
+      user.savedEvents.push(showId);
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: isSaved ? "Show removed from saved events" : "Show saved successfully",
+      savedEvents: user.savedEvents,
+      isSaved: !isSaved,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getSavedShows = async (req, res) => {
+  try {
+    const userId = req.user._id || req.user.id;
+    const user = await User.findById(userId).populate("savedEvents");
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      savedShows: user.savedEvents || [],
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 };

@@ -49,7 +49,7 @@ const UserSchema = new mongoose.Schema(
     savedEvents: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Event",
+        ref: "Show",
       },
     ],
 
