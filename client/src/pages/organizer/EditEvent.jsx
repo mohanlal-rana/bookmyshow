@@ -11,7 +11,7 @@ export default function EditEvent() {
     name: "",
     description: "",
     genre: "Concert",
-    bannerImage: null, // file for new upload
+    bannerImage: null,
     date: "",
     startTime: "",
     endTime: "",
@@ -22,18 +22,51 @@ export default function EditEvent() {
     totalTickets: "",
     availableTickets: "",
     maxTicketsPerUser: 5,
-    // refundPolicy: "",
     status: "published",
     bookingDeadline: "",
-    tags: "", // stored as string during editing
+    tags: "",
     artists: [],
   });
 
+  const [isVerified, setIsVerified] = useState(false);
   const [currentBannerUrl, setCurrentBannerUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
+
+  const fieldKeyMap = {
+    venueName: "venue.name",
+    city: "venue.city",
+    address: "venue.address",
+  };
+
+  const clearFieldError = (errorKey) => {
+    setFieldErrors((prev) => {
+      if (!prev[errorKey]) return prev;
+      const updated = { ...prev };
+      delete updated[errorKey];
+      return updated;
+    });
+  };
+
+  const getFieldError = (fieldName) => fieldErrors[fieldName];
+
+  const inputClass = (fieldName, isDisabled = false) =>
+    `w-full p-3 border rounded-lg transition-colors focus:outline-none ${
+      isDisabled ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""
+    } ${
+      getFieldError(fieldName)
+        ? "border-red-500 focus:border-red-500 ring-1 ring-red-500"
+        : "border-gray-300 focus:border-[#34908B]"
+    }`;
+
+  // Helper check to see if the event date + end time has passed
+  const isEventEnded = () => {
+    if (!formData.date || !formData.endTime) return false;
+    const endDateTime = new Date(`${formData.date}T${formData.endTime}:00`);
+    return new Date() >= endDateTime;
+  };
 
   // ---- Artist handlers ----
   const addArtist = () => {
@@ -41,18 +74,24 @@ export default function EditEvent() {
       ...prev,
       artists: [...prev.artists, { name: "", image: "" }],
     }));
+    clearFieldError("artists");
   };
 
   const removeArtist = (index) => {
-    const updated = [...formData.artists];
-    updated.splice(index, 1);
-    setFormData((prev) => ({ ...prev, artists: updated }));
+    setFormData((prev) => ({
+      ...prev,
+      artists: prev.artists.filter((_, i) => i !== index),
+    }));
+    clearFieldError(`artists[${index}].name`);
   };
 
   const updateArtist = (index, field, value) => {
-    const updated = [...formData.artists];
-    updated[index][field] = value;
-    setFormData((prev) => ({ ...prev, artists: updated }));
+    setFormData((prev) => {
+      const updated = [...prev.artists];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, artists: updated };
+    });
+    clearFieldError(`artists[${index}].${field}`);
   };
 
   // ---- Fetch Event Data ----
@@ -73,14 +112,14 @@ export default function EditEvent() {
 
         const show = data.show;
 
+        setIsVerified(show.isVerified || false);
+
         setFormData({
           name: show.name || "",
           description: show.description || "",
           genre: show.genre || "Concert",
           bannerImage: null,
-          date: show.date
-            ? new Date(show.date).toISOString().split("T")[0]
-            : "",
+          date: show.date ? new Date(show.date).toISOString().split("T")[0] : "",
           startTime: show.startTime || "",
           endTime: show.endTime || "",
           venueName: show.venue?.name || "",
@@ -96,10 +135,11 @@ export default function EditEvent() {
             ? new Date(show.bookingDeadline).toISOString().split("T")[0]
             : "",
           tags: Array.isArray(show.tags) ? show.tags.join(", ") : "",
-          artists: show.artists?.map((a) => ({
-            name: a.name || "",
-            image: a.image || "",
-          })) || [],
+          artists:
+            show.artists?.map((a) => ({
+              name: a.name || "",
+              image: a.image || "",
+            })) || [],
         });
 
         setCurrentBannerUrl(show.bannerImage || "");
@@ -113,47 +153,37 @@ export default function EditEvent() {
     fetchEvent();
   }, [API, id]);
 
-  // ---- Generic change handler ----
   const handleChange = (e) => {
     const { name, value, files, type, checked } = e.target;
-    if (type === "file") {
-      setFormData((prev) => ({
-        ...prev,
-        [name]: files[0],
-      }));
-    } else if (type === "checkbox") {
-      setFormData((prev) => ({
-        ...prev,
-        [name]: checked,
-      }));
-    } else {
-      setFormData((prev) => ({
-        ...prev,
-        [name]: value,
-      }));
-    }
+    const targetErrorKey = fieldKeyMap[name] || name;
+    clearFieldError(targetErrorKey);
+
+    setFormData((prev) => ({
+      ...prev,
+      [name]: type === "file" ? files[0] : type === "checkbox" ? checked : value,
+    }));
   };
 
-  // ---- Submit Form ----
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     try {
       setLoading(true);
       setError("");
-      setFieldErrors({});
 
       const form = new FormData();
 
-      // Basic info
       form.append("name", formData.name);
       form.append("description", formData.description);
       form.append("genre", formData.genre);
-      form.append("date", formData.date);
-      form.append("startTime", formData.startTime);
-      form.append("endTime", formData.endTime);
 
-      // Venue structure
+      // Only append date and time fields if not verified
+      if (!isVerified) {
+        form.append("date", formData.date);
+        form.append("startTime", formData.startTime);
+        form.append("endTime", formData.endTime);
+      }
+
       form.append(
         "venue",
         JSON.stringify({
@@ -163,31 +193,25 @@ export default function EditEvent() {
         })
       );
 
-      // Numerical ticket properties
       form.append("price", Number(formData.price));
       form.append("totalTickets", Number(formData.totalTickets));
       form.append("availableTickets", Number(formData.availableTickets));
       form.append("maxTicketsPerUser", Number(formData.maxTicketsPerUser));
 
-      // Policy & Metadata
-      form.append("refundPolicy", formData.refundPolicy);
+      form.append("refundPolicy", formData.refundPolicy || "");
       form.append("status", formData.status);
 
       if (formData.bookingDeadline) {
         form.append("bookingDeadline", formData.bookingDeadline);
       }
 
-      // Convert tags string to array
       const tagsArray = formData.tags
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean);
       form.append("tags", JSON.stringify(tagsArray));
-
-      // Artists array
       form.append("artists", JSON.stringify(formData.artists));
 
-      // Banner Image file (if new file uploaded)
       if (formData.bannerImage instanceof File) {
         form.append("bannerImage", formData.bannerImage);
       }
@@ -198,16 +222,7 @@ export default function EditEvent() {
         body: form,
       });
 
-      const text = await res.text();
-      let data;
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch (err) {
-        console.error("Server Response:", text);
-        throw new Error(
-          "Server returned an invalid response. Check backend logs for errors."
-        );
-      }
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         if (Array.isArray(data.errors)) {
@@ -216,15 +231,17 @@ export default function EditEvent() {
             errors[err.field] = err.message;
           });
           setFieldErrors(errors);
+        } else {
+          setError(data.message || "Failed to update event.");
         }
-        throw new Error(data.message || "Failed to update event.");
+        return;
       }
 
       alert("Show updated successfully!");
       navigate(`/organizer/events/${id}`);
     } catch (err) {
       console.error(err);
-      setError(err.message);
+      setError("Network error or server unreachable.");
     } finally {
       setLoading(false);
     }
@@ -238,25 +255,22 @@ export default function EditEvent() {
     );
   }
 
-  if (error && !fetching) {
-    return (
-      <div className="p-12 text-center text-red-600 font-semibold bg-red-50 rounded-xl max-w-2xl mx-auto mt-6 border border-red-200">
-        {error}
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-5xl mx-auto bg-white p-8 rounded-xl shadow">
       <h1 className="text-3xl font-bold text-[#34908B] mb-6">Edit Event</h1>
 
       {error && (
-        <div className="bg-red-100 text-red-700 p-3 rounded mb-4 whitespace-pre-line">
+        <div className="bg-red-100 text-red-700 p-3 rounded mb-4 whitespace-pre-line border border-red-200">
           {error}
         </div>
       )}
 
-      {/* Current Banner Preview */}
+      {isVerified && (
+        <div className="bg-amber-50 text-amber-800 p-3 rounded mb-4 text-sm border border-amber-200">
+          <strong>Note:</strong> This event has been verified by an admin. Event date and time can no longer be edited.
+        </div>
+      )}
+
       {currentBannerUrl && (
         <div className="mb-6">
           <p className="text-sm font-medium text-gray-700 mb-2">Current Banner Image:</p>
@@ -273,7 +287,7 @@ export default function EditEvent() {
       )}
 
       <form onSubmit={handleSubmit} className="grid md:grid-cols-2 gap-5">
-        {/* ---- SHOW NAME ---- */}
+        {/* SHOW NAME */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Show Name *
@@ -284,15 +298,15 @@ export default function EditEvent() {
             placeholder="Event Name"
             value={formData.name}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className={inputClass("name")}
             required
           />
-          {fieldErrors.name && (
-            <p className="text-red-500 text-sm">{fieldErrors.name}</p>
+          {getFieldError("name") && (
+            <p className="text-red-500 text-sm mt-1">{getFieldError("name")}</p>
           )}
         </div>
 
-        {/* ---- GENRE ---- */}
+        {/* GENRE */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Genre *
@@ -301,7 +315,7 @@ export default function EditEvent() {
             name="genre"
             value={formData.genre}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className={inputClass("genre")}
           >
             <option value="Concert">Concert</option>
             <option value="Music">Music</option>
@@ -312,9 +326,12 @@ export default function EditEvent() {
             <option value="Sports">Sports</option>
             <option value="Other">Other</option>
           </select>
+          {getFieldError("genre") && (
+            <p className="text-red-500 text-sm mt-1">{getFieldError("genre")}</p>
+          )}
         </div>
 
-        {/* ---- DESCRIPTION ---- */}
+        {/* DESCRIPTION */}
         <div className="md:col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Description *
@@ -325,15 +342,15 @@ export default function EditEvent() {
             placeholder="Description"
             value={formData.description}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className={inputClass("description")}
             required
           />
-          {fieldErrors.description && (
-            <p className="text-red-500 text-sm">{fieldErrors.description}</p>
+          {getFieldError("description") && (
+            <p className="text-red-500 text-sm mt-1">{getFieldError("description")}</p>
           )}
         </div>
 
-        {/* ---- NEW BANNER IMAGE UPLOAD ---- */}
+        {/* BANNER IMAGE */}
         <div className="md:col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Replace Banner Image (Optional)
@@ -343,58 +360,70 @@ export default function EditEvent() {
             name="bannerImage"
             accept="image/*"
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className={inputClass("bannerImage")}
           />
+          {getFieldError("bannerImage") && (
+            <p className="text-red-500 text-sm mt-1">{getFieldError("bannerImage")}</p>
+          )}
         </div>
 
-        {/* ---- DATE & TIME ---- */}
+        {/* DATE & TIME (Disabled if isVerified) */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Date *
+            Date * {isVerified && "(Locked)"}
           </label>
           <input
             type="date"
             name="date"
             value={formData.date}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            disabled={isVerified}
+            className={inputClass("date", isVerified)}
             required
           />
-          {fieldErrors.date && (
-            <p className="text-red-500 text-sm">{fieldErrors.date}</p>
+          {getFieldError("date") && (
+            <p className="text-red-500 text-sm mt-1">{getFieldError("date")}</p>
           )}
         </div>
 
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Start Time *
+              Start Time * {isVerified && "(Locked)"}
             </label>
             <input
               type="time"
               name="startTime"
               value={formData.startTime}
               onChange={handleChange}
-              className="w-full p-3 border rounded-lg"
+              disabled={isVerified}
+              className={inputClass("startTime", isVerified)}
               required
             />
+            {getFieldError("startTime") && (
+              <p className="text-red-500 text-sm mt-1">{getFieldError("startTime")}</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              End Time *
+              End Time * {isVerified && "(Locked)"}
             </label>
             <input
               type="time"
               name="endTime"
               value={formData.endTime}
               onChange={handleChange}
-              className="w-full p-3 border rounded-lg"
+              disabled={isVerified}
+              className={inputClass("endTime", isVerified)}
               required
             />
+            {getFieldError("endTime") && (
+              <p className="text-red-500 text-sm mt-1">{getFieldError("endTime")}</p>
+            )}
           </div>
         </div>
 
-        {/* ---- BOOKING DEADLINE ---- */}
+        {/* BOOKING DEADLINE */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Booking Deadline
@@ -404,11 +433,14 @@ export default function EditEvent() {
             name="bookingDeadline"
             value={formData.bookingDeadline}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className={inputClass("bookingDeadline")}
           />
+          {getFieldError("bookingDeadline") && (
+            <p className="text-red-500 text-sm mt-1">{getFieldError("bookingDeadline")}</p>
+          )}
         </div>
 
-        {/* ---- VENUE DETAILS ---- */}
+        {/* VENUE DETAILS */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Venue Name *
@@ -419,11 +451,11 @@ export default function EditEvent() {
             placeholder="Venue Name"
             value={formData.venueName}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className={inputClass("venue.name")}
             required
           />
-          {fieldErrors["venue.name"] && (
-            <p className="text-red-500 text-sm">{fieldErrors["venue.name"]}</p>
+          {getFieldError("venue.name") && (
+            <p className="text-red-500 text-sm mt-1">{getFieldError("venue.name")}</p>
           )}
         </div>
 
@@ -437,11 +469,11 @@ export default function EditEvent() {
             placeholder="City"
             value={formData.city}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className={inputClass("venue.city")}
             required
           />
-          {fieldErrors["venue.city"] && (
-            <p className="text-red-500 text-sm">{fieldErrors["venue.city"]}</p>
+          {getFieldError("venue.city") && (
+            <p className="text-red-500 text-sm mt-1">{getFieldError("venue.city")}</p>
           )}
         </div>
 
@@ -455,15 +487,15 @@ export default function EditEvent() {
             placeholder="Address"
             value={formData.address}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className={inputClass("venue.address")}
             required
           />
-          {fieldErrors["venue.address"] && (
-            <p className="text-red-500 text-sm">{fieldErrors["venue.address"]}</p>
+          {getFieldError("venue.address") && (
+            <p className="text-red-500 text-sm mt-1">{getFieldError("venue.address")}</p>
           )}
         </div>
 
-        {/* ---- TICKETS & PRICE ---- */}
+        {/* TICKETS & PRICE */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Price (Rs) *
@@ -475,11 +507,11 @@ export default function EditEvent() {
             min="0"
             value={formData.price}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className={inputClass("price")}
             required
           />
-          {fieldErrors.price && (
-            <p className="text-red-500 text-sm">{fieldErrors.price}</p>
+          {getFieldError("price") && (
+            <p className="text-red-500 text-sm mt-1">{getFieldError("price")}</p>
           )}
         </div>
 
@@ -494,26 +526,13 @@ export default function EditEvent() {
             min="1"
             value={formData.totalTickets}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className={inputClass("totalTickets")}
             required
           />
+          {getFieldError("totalTickets") && (
+            <p className="text-red-500 text-sm mt-1">{getFieldError("totalTickets")}</p>
+          )}
         </div>
-
-        {/* <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Available Tickets *
-          </label>
-          <input
-            type="number"
-            name="availableTickets"
-            placeholder="Available Tickets"
-            min="0"
-            value={formData.availableTickets}
-            onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
-            required
-          />
-        </div> */}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -525,25 +544,14 @@ export default function EditEvent() {
             placeholder="5"
             value={formData.maxTicketsPerUser}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className={inputClass("maxTicketsPerUser")}
           />
+          {getFieldError("maxTicketsPerUser") && (
+            <p className="text-red-500 text-sm mt-1">{getFieldError("maxTicketsPerUser")}</p>
+          )}
         </div>
 
-        {/* ---- REFUND POLICY & STATUS ---- */}
-        {/* <div className="md:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Refund Policy
-          </label>
-          <textarea
-            name="refundPolicy"
-            rows="2"
-            placeholder="Refund Policy"
-            value={formData.refundPolicy}
-            onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
-          />
-        </div> */}
-
+        {/* STATUS */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Status
@@ -552,16 +560,21 @@ export default function EditEvent() {
             name="status"
             value={formData.status}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className={inputClass("status")}
           >
             <option value="draft">Draft</option>
             <option value="published">Published</option>
             <option value="cancelled">Cancelled</option>
-            <option value="completed">Completed</option>
+            {(isEventEnded() || formData.status === "completed") && (
+              <option value="completed">Completed</option>
+            )}
           </select>
+          {getFieldError("status") && (
+            <p className="text-red-500 text-sm mt-1">{getFieldError("status")}</p>
+          )}
         </div>
 
-        {/* ---- TAGS ---- */}
+        {/* TAGS */}
         <div className="md:col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Tags
@@ -572,29 +585,39 @@ export default function EditEvent() {
             placeholder="Comma-separated (e.g. music, live, coldplay)"
             value={formData.tags}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className={inputClass("tags")}
           />
+          {getFieldError("tags") && (
+            <p className="text-red-500 text-sm mt-1">{getFieldError("tags")}</p>
+          )}
         </div>
 
-        {/* ---- ARTISTS ---- */}
+        {/* ARTISTS */}
         <div className="md:col-span-2">
           <label className="block font-medium text-gray-700 mb-1">Artists</label>
           {formData.artists.map((artist, idx) => (
-            <div key={idx} className="flex flex-wrap items-center gap-2 mb-2">
-              <input
-                type="text"
-                placeholder="Artist name"
-                value={artist.name}
-                onChange={(e) => updateArtist(idx, "name", e.target.value)}
-                className="flex-1 p-2 border rounded-lg"
-              />
-              <button
-                type="button"
-                onClick={() => removeArtist(idx)}
-                className="text-red-500 hover:text-red-700 font-bold px-2"
-              >
-                ✕
-              </button>
+            <div key={idx} className="flex flex-col mb-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Artist name"
+                  value={artist.name}
+                  onChange={(e) => updateArtist(idx, "name", e.target.value)}
+                  className={inputClass(`artists[${idx}].name`)}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeArtist(idx)}
+                  className="text-red-500 hover:text-red-700 font-bold px-2"
+                >
+                  ✕
+                </button>
+              </div>
+              {getFieldError(`artists[${idx}].name`) && (
+                <p className="text-red-500 text-sm mt-1">
+                  {getFieldError(`artists[${idx}].name`)}
+                </p>
+              )}
             </div>
           ))}
           <button
@@ -604,9 +627,12 @@ export default function EditEvent() {
           >
             + Add Artist
           </button>
+          {getFieldError("artists") && (
+            <p className="text-red-500 text-sm mt-1">{getFieldError("artists")}</p>
+          )}
         </div>
 
-        {/* ---- SUBMIT ---- */}
+        {/* SUBMIT BUTTON */}
         <button
           type="submit"
           disabled={loading}

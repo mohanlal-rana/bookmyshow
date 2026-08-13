@@ -47,7 +47,12 @@ export const createShow = async (req, res) => {
     const inputLat = Number(venue.latitude ?? req.body.latitude);
     const inputLng = Number(venue.longitude ?? req.body.longitude);
 
-    if (!isNaN(inputLat) && !isNaN(inputLng) && inputLat !== 0 && inputLng !== 0) {
+    if (
+      !isNaN(inputLat) &&
+      !isNaN(inputLng) &&
+      inputLat !== 0 &&
+      inputLng !== 0
+    ) {
       locationData = {
         type: "Point",
         coordinates: [inputLng, inputLat],
@@ -56,7 +61,7 @@ export const createShow = async (req, res) => {
       const coords = await fetchCoordinates(
         venue.address,
         venue.city,
-        venue.name
+        venue.name,
       );
 
       if (coords) {
@@ -74,7 +79,7 @@ export const createShow = async (req, res) => {
     const tags = Array.isArray(parsedTags) ? parsedTags : [];
     const artists = Array.isArray(parsedArtists)
       ? parsedArtists.filter(
-          (item) => typeof item === "object" && item !== null
+          (item) => typeof item === "object" && item !== null,
         )
       : [];
 
@@ -233,11 +238,16 @@ export const getOneShowByOrganizer = async (req, res) => {
 export const getShows = async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
+    const now = new Date(); // Current UTC timestamp
 
-    // Strict filter: display only published and verified shows
     const query = {
       status: "published",
       isVerified: true,
+      $or: [
+        { bookingDeadline: { $exists: false } },
+        { bookingDeadline: null },
+        { bookingDeadline: { $gt: now } }, // Strict comparison
+      ],
     };
 
     const shows = await Show.find(query)
@@ -318,7 +328,7 @@ export const updateShow = async (req, res) => {
       });
     }
 
-    // Authorization (only organizer or admin)
+    // Authorization check
     if (!show.organizerId.equals(req.user._id) && req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
@@ -328,13 +338,52 @@ export const updateShow = async (req, res) => {
 
     const updateData = {};
 
-    // --- 1. Scalars ---
+    // --- RULE 1: Lock date/time if already verified by Admin ---
+    if (show.isVerified && req.user.role !== "admin") {
+      if (
+        req.body.date !== undefined ||
+        req.body.startTime !== undefined ||
+        req.body.endTime !== undefined
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Date, Start Time, and End Time cannot be modified once verified by an admin.",
+        });
+      }
+    } else {
+      if (req.body.startTime !== undefined)
+        updateData.startTime = req.body.startTime;
+      if (req.body.endTime !== undefined) updateData.endTime = req.body.endTime;
+      if (req.body.date) updateData.date = new Date(req.body.date);
+    }
+
+    // --- RULE 2: Prevent status='completed' before show end date/time ---
+    const targetStatus =
+      req.body.status !== undefined ? req.body.status : show.status;
+
+    if (targetStatus === "completed") {
+      const showDateStr = req.body.date || show.date;
+      const showEndTimeStr = req.body.endTime || show.endTime;
+
+      // Extract ISO date part (YYYY-MM-DD)
+      const formattedDate = new Date(showDateStr).toISOString().split("T")[0];
+      const showEndDateTime = new Date(`${formattedDate}T${showEndTimeStr}:00`);
+
+      if (new Date() < showEndDateTime) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Cannot mark a show as completed before its actual end date and time.",
+        });
+      }
+    }
+
+    // --- Scalars ---
     const scalarFields = [
       "name",
       "description",
       "genre",
-      "startTime",
-      "endTime",
       "refundPolicy",
       "status",
     ];
@@ -342,7 +391,7 @@ export const updateShow = async (req, res) => {
       if (req.body[field] !== undefined) updateData[field] = req.body[field];
     });
 
-    // --- 2. Numeric fields & Dates ---
+    // --- Numeric & Dates ---
     if (req.body.price !== undefined) updateData.price = Number(req.body.price);
     if (req.body.totalTickets !== undefined)
       updateData.totalTickets = Number(req.body.totalTickets);
@@ -351,11 +400,10 @@ export const updateShow = async (req, res) => {
     if (req.body.maxTicketsPerUser !== undefined)
       updateData.maxTicketsPerUser = Number(req.body.maxTicketsPerUser);
 
-    if (req.body.date) updateData.date = new Date(req.body.date);
     if (req.body.bookingDeadline)
       updateData.bookingDeadline = new Date(req.body.bookingDeadline);
 
-    // --- 3. Parse Array Fields (tags & artists) ---
+    // --- Array Fields ---
     if (req.body.tags !== undefined) {
       const parsedTags = safeParse(req.body.tags, []);
       updateData.tags = Array.isArray(parsedTags) ? parsedTags : [];
@@ -370,7 +418,7 @@ export const updateShow = async (req, res) => {
         : [];
     }
 
-    // --- 4. Venue & Coordinates Handling ---
+    // --- Venue Handling ---
     if (req.body.venue !== undefined) {
       const venue = safeParse(req.body.venue, {});
 
@@ -387,12 +435,10 @@ export const updateShow = async (req, res) => {
         });
       }
 
-      // Check existing document location
       let locationData = show.venue?.location
         ? { ...show.venue.location }
         : null;
 
-      // Extract manual lat/lng inputs
       const rawLat = venue.latitude ?? req.body.latitude;
       const rawLng = venue.longitude ?? req.body.longitude;
 
@@ -405,14 +451,12 @@ export const updateShow = async (req, res) => {
           ? Number(rawLng)
           : NaN;
 
-      // Case A: Explicit Manual Coordinates Provided
       if (!isNaN(inputLat) && !isNaN(inputLng)) {
         locationData = {
           type: "Point",
-          coordinates: [inputLng, inputLat], // GeoJSON order: [Longitude, Latitude]
+          coordinates: [inputLng, inputLat],
         };
       } else {
-        // Case B: Trigger Geocoding if venue changed or coordinates missing
         const oldVenue = show.venue || {};
         const hasVenueChanged =
           (venue.name || "").trim() !== (oldVenue.name || "").trim() ||
@@ -425,7 +469,6 @@ export const updateShow = async (req, res) => {
             venue.city,
             venue.name,
           );
-
           if (coords) {
             locationData = {
               type: "Point",
@@ -435,7 +478,6 @@ export const updateShow = async (req, res) => {
         }
       }
 
-      // Explicitly construct updateData.venue object
       updateData.venue = {
         name: venue.name,
         city: venue.city,
@@ -447,7 +489,7 @@ export const updateShow = async (req, res) => {
       }
     }
 
-    // --- 5. File Uploads ---
+    // --- Files ---
     let bannerImagePath = "";
     if (req.files?.bannerImage?.[0]) {
       bannerImagePath =
@@ -462,7 +504,7 @@ export const updateShow = async (req, res) => {
       updateData.bannerImage = bannerImagePath;
     }
 
-    // --- 6. Save Updates to DB ---
+    // --- DB Update ---
     const updatedShow = await Show.findByIdAndUpdate(
       id,
       { $set: updateData },
@@ -502,8 +544,6 @@ export const deleteShow = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const organizerId = req.user._id;
-
     const show = await Show.findById(id);
 
     if (!show) {
@@ -514,10 +554,23 @@ export const deleteShow = async (req, res) => {
     }
 
     // ================= AUTHORIZATION =================
-    if (!show.organizerId.equals(req.user._id)) {
+    if (!show.organizerId.equals(req.user._id) && req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "You are not authorized to update this show",
+        message: "You are not authorized to delete this show",
+      });
+    }
+
+    // ================= COMPLETION RULE =================
+    // Construct the end date-time object
+    const formattedDate = new Date(show.date).toISOString().split("T")[0];
+    const showEndDateTime = new Date(`${formattedDate}T${show.endTime}:00`);
+    const isPastEndTime = new Date() >= showEndDateTime;
+
+    if (show.status !== "completed" && !isPastEndTime) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot delete a show before it is completed.",
       });
     }
 
@@ -528,7 +581,7 @@ export const deleteShow = async (req, res) => {
       message: "Show deleted successfully",
     });
   } catch (error) {
-    console.error(error);
+    console.error("Delete show error:", error);
 
     return res.status(500).json({
       success: false,
@@ -536,7 +589,6 @@ export const deleteShow = async (req, res) => {
     });
   }
 };
-
 // ================= GET ALL SHOWS FOR ADMIN =================
 export const getShowsByAdmin = async (req, res) => {
   try {
@@ -679,7 +731,18 @@ export const deleteShowByAdmin = async (req, res) => {
         message: "Show not found",
       });
     }
+    // ================= COMPLETION RULE =================
+    // Construct the end date-time object
+    const formattedDate = new Date(show.date).toISOString().split("T")[0];
+    const showEndDateTime = new Date(`${formattedDate}T${show.endTime}:00`);
+    const isPastEndTime = new Date() >= showEndDateTime;
 
+    if (show.status !== "completed" && !isPastEndTime) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot delete a show before it is completed.",
+      });
+    }
     await show.deleteOne();
 
     return res.status(200).json({
@@ -730,39 +793,51 @@ export const verifyShow = async (req, res) => {
 };
 export const searchShows = async (req, res) => {
   try {
-    // 1. Extract query params safely (accepting both 'search' or 'query')
     const { query, search, city, genre, page = 1, limit = 10 } = req.query;
     const searchTerm = (search || query || "").trim();
+    const now = new Date();
 
-    // 2. Base Filter (Always match published & verified)
-    const filter = {
-      status: "published",
-      isVerified: true,
-    };
+    // 1. Base conditions (Always matched)
+    const andConditions = [
+      { status: "published" },
+      { isVerified: true },
+      {
+        $or: [
+          { bookingDeadline: { $exists: false } },
+          { bookingDeadline: null },
+          { bookingDeadline: { $gt: now } }, // Excludes past deadlines
+        ],
+      },
+    ];
 
-    // 3. Add text search if a search term exists
+    // 2. Add text search condition
     if (searchTerm) {
       const safeSearch = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const searchRegex = new RegExp(safeSearch, "i");
 
-      filter.$or = [
-        { name: searchRegex },
-        { description: searchRegex },
-        { genre: searchRegex },
-        { "venue.name": searchRegex },
-        { "venue.city": searchRegex },
-        { tags: searchRegex },
-        { "artists.name": searchRegex }, // Matches artist name inside array
-      ];
+      andConditions.push({
+        $or: [
+          { name: searchRegex },
+          { description: searchRegex },
+          { genre: searchRegex },
+          { "venue.name": searchRegex },
+          { "venue.city": searchRegex },
+          { tags: searchRegex },
+          { "artists.name": searchRegex },
+        ],
+      });
     }
 
-    // 4. Add City filter if present
+    // 3. Build final filter object
+    const filter = { $and: andConditions };
+
+    // 4. Add City filter
     if (city && city.trim()) {
       const safeCity = city.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       filter["venue.city"] = new RegExp(safeCity, "i");
     }
 
-    // 5. Add Genre filter if present
+    // 5. Add Genre filter
     if (genre && genre.trim()) {
       filter.genre = genre.trim();
     }
@@ -907,12 +982,16 @@ export const toggleSaveShow = async (req, res) => {
     // Validate show existence
     const show = await Show.findById(showId);
     if (!show) {
-      return res.status(404).json({ success: false, message: "Show not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Show not found" });
     }
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     // Check if the event is already saved
@@ -921,7 +1000,7 @@ export const toggleSaveShow = async (req, res) => {
     if (isSaved) {
       // Remove from savedEvents
       user.savedEvents = user.savedEvents.filter(
-        (id) => id.toString() !== showId.toString()
+        (id) => id.toString() !== showId.toString(),
       );
     } else {
       // Add to savedEvents
@@ -932,7 +1011,9 @@ export const toggleSaveShow = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: isSaved ? "Show removed from saved events" : "Show saved successfully",
+      message: isSaved
+        ? "Show removed from saved events"
+        : "Show saved successfully",
       savedEvents: user.savedEvents,
       isSaved: !isSaved,
     });
@@ -947,7 +1028,9 @@ export const getSavedShows = async (req, res) => {
     const user = await User.findById(userId).populate("savedEvents");
 
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     return res.status(200).json({

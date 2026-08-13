@@ -1,7 +1,7 @@
 import { useEffect, useState, useContext, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../store/AuthContext";
-import RecommendedShows from "./RecommendedShows.jsx";
+// import RecommendedShows from "./RecommendedShows.jsx";
 
 export default function Home() {
   const { API, user, token } = useContext(AuthContext);
@@ -165,7 +165,7 @@ export default function Home() {
         </form>
       </div>
 
-      <RecommendedShows />
+      {/* <RecommendedShows /> */}
 
       {/* SHOWS SECTION */}
       <div className="px-6 py-10 max-w-7xl mx-auto">

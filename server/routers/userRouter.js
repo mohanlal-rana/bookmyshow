@@ -13,7 +13,7 @@ import {
 } from "../middlewares/authMiddleware.js";
 import upload from "../middlewares/uploadMiddleware.js";
 import validate from "../middlewares/validateMiddleware.js";
-import { organizerSchema } from "../validators/organizerValidator.js";
+import { createOrganizerSchema} from "../validators/organizerValidator.js";
 import fillFileNames from "../middlewares/fileMiddleware.js";
 const router = express.Router();
 
@@ -30,7 +30,7 @@ router.put(
     { name: "govIDImage", maxCount: 1 },
   ]),
   fillFileNames,
-  validate(organizerSchema), // consider renaming to organizerSchema
+  validate(createOrganizerSchema), // consider renaming to organizerSchema
   beOrganizer,
 );
 

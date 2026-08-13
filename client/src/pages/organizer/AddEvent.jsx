@@ -1,4 +1,4 @@
-import { useState,useContext } from "react";
+import { useState, useContext, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../../store/AuthContext";
 
@@ -21,16 +21,53 @@ export default function AddEvent() {
     availableTickets: "",
     price: "",
     maxTicketsPerUser: 5,
-    // refundPolicy: "No refund available",
     status: "published",
     bookingDeadline: "",
-    tags: "", // Stored as plain string during input
+    tags: "",
     artists: [],
   });
 
+  const [bannerPreview, setBannerPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
+
+  const bannerInputRef = useRef(null);
+
+  // Clear specific field error dynamically on user interaction
+  const clearFieldError = (fieldName) => {
+    if (fieldErrors[fieldName]) {
+      setFieldErrors((prev) => {
+        const updated = { ...prev };
+        delete updated[fieldName];
+        return updated;
+      });
+    }
+  };
+
+  // ---- Banner Image Handling ----
+  const handleBannerChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (bannerPreview) {
+        URL.revokeObjectURL(bannerPreview);
+      }
+      setFormData((prev) => ({ ...prev, bannerImage: file }));
+      setBannerPreview(URL.createObjectURL(file));
+      clearFieldError("bannerImage");
+    }
+  };
+
+  const handleClearBanner = () => {
+    if (bannerPreview) {
+      URL.revokeObjectURL(bannerPreview);
+    }
+    setFormData((prev) => ({ ...prev, bannerImage: null }));
+    setBannerPreview(null);
+    if (bannerInputRef.current) {
+      bannerInputRef.current.value = "";
+    }
+  };
 
   // ---- Artist handlers ----
   const addArtist = () => {
@@ -54,23 +91,13 @@ export default function AddEvent() {
 
   // ---- Generic change handler ----
   const handleChange = (e) => {
-    const { name, value, files, type, checked } = e.target;
+    const { name, value, type, checked } = e.target;
+    clearFieldError(name);
 
-    if (type === "file") {
-      setFormData((prev) => ({
-        ...prev,
-        [name]: files[0],
-      }));
-    } else if (type === "checkbox") {
-      setFormData((prev) => ({
-        ...prev,
-        [name]: checked,
-      }));
+    if (type === "checkbox") {
+      setFormData((prev) => ({ ...prev, [name]: checked }));
     } else {
-      setFormData((prev) => ({
-        ...prev,
-        [name]: value,
-      }));
+      setFormData((prev) => ({ ...prev, [name]: value }));
     }
   };
 
@@ -93,7 +120,7 @@ export default function AddEvent() {
       form.append("startTime", formData.startTime);
       form.append("endTime", formData.endTime);
 
-      // Venue (Matches Schema Nested Structure)
+      // Venue JSON mapping
       form.append(
         "venue",
         JSON.stringify({
@@ -103,21 +130,20 @@ export default function AddEvent() {
         })
       );
 
-      // Numeric Ticket Details
+      // Numbers
       form.append("totalTickets", Number(formData.totalTickets));
-      form.append("availableTickets", Number(formData.totalTickets)); // Defaults to totalTickets if not specified
+      form.append("availableTickets", Number(formData.totalTickets));
       form.append("price", Number(formData.price));
       form.append("maxTicketsPerUser", Number(formData.maxTicketsPerUser));
 
-      // Additional Metadata
-      // form.append("refundPolicy", formData.refundPolicy);
+      // Metadata
       form.append("status", formData.status);
 
       if (formData.bookingDeadline) {
         form.append("bookingDeadline", formData.bookingDeadline);
       }
 
-      // Tags Array Conversion
+      // Tags Array
       const tagsArray = formData.tags
         .split(",")
         .map((t) => t.trim())
@@ -138,24 +164,17 @@ export default function AddEvent() {
         body: form,
       });
 
-      const text = await res.text();
-      let data;
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch (err) {
-        console.error("Server Response:", text);
-        throw new Error(
-          "Server returned an invalid response. Check the backend terminal for details."
-        );
-      }
-console.log(data)
+      const data = await res.json();
+
       if (!res.ok) {
         if (Array.isArray(data.errors)) {
-          const errors = {};
+          const errorsObj = {};
           data.errors.forEach((err) => {
-            errors[err.field] = err.message;
+            if (err.field) {
+              errorsObj[err.field] = err.message;
+            }
           });
-          setFieldErrors(errors);
+          setFieldErrors(errorsObj);
         }
         throw new Error(data.message || "Failed to create show.");
       }
@@ -175,7 +194,7 @@ console.log(data)
       <h1 className="text-3xl font-bold text-[#34908B] mb-6">Create Show</h1>
 
       {error && (
-        <div className="bg-red-100 text-red-700 p-3 rounded mb-4 whitespace-pre-line">
+        <div className="bg-rose-100 text-rose-700 p-4 rounded-lg mb-6 text-sm font-medium border border-rose-200">
           {error}
         </div>
       )}
@@ -192,11 +211,14 @@ console.log(data)
             placeholder="Event Name"
             value={formData.name}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
-            required
+            className={`w-full p-3 border rounded-lg outline-none ${
+              fieldErrors.name ? "border-rose-500" : "border-gray-300"
+            }`}
           />
           {fieldErrors.name && (
-            <p className="text-red-500 text-sm">{fieldErrors.name}</p>
+            <p className="text-rose-500 text-xs mt-1 font-medium">
+              {fieldErrors.name}
+            </p>
           )}
         </div>
 
@@ -209,7 +231,7 @@ console.log(data)
             name="genre"
             value={formData.genre}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className="w-full p-3 border border-gray-300 rounded-lg outline-none bg-white"
           >
             <option value="Concert">Concert</option>
             <option value="Music">Music</option>
@@ -233,28 +255,55 @@ console.log(data)
             placeholder="Describe your show (10-2000 characters)..."
             value={formData.description}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
-            required
+            className={`w-full p-3 border rounded-lg outline-none resize-none ${
+              fieldErrors.description ? "border-rose-500" : "border-gray-300"
+            }`}
           />
           {fieldErrors.description && (
-            <p className="text-red-500 text-sm">{fieldErrors.description}</p>
+            <p className="text-rose-500 text-xs mt-1 font-medium">
+              {fieldErrors.description}
+            </p>
           )}
         </div>
 
-        {/* ---- BANNER IMAGE ---- */}
+        {/* ---- BANNER IMAGE & PREVIEW ---- */}
         <div className="md:col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Banner Image
           </label>
           <input
+            ref={bannerInputRef}
             type="file"
             name="bannerImage"
             accept="image/*"
-            onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            onChange={handleBannerChange}
+            className="w-full text-xs text-gray-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#34908B] file:text-white hover:file:bg-[#2b7873] cursor-pointer border border-gray-300 rounded-lg"
           />
           {fieldErrors.bannerImage && (
-            <p className="text-red-500 text-sm">{fieldErrors.bannerImage}</p>
+            <p className="text-rose-500 text-xs mt-1 font-medium">
+              {fieldErrors.bannerImage}
+            </p>
+          )}
+
+          {bannerPreview && (
+            <div className="mt-4 relative inline-block">
+              <p className="text-xs font-semibold text-gray-500 mb-2">
+                Banner Preview:
+              </p>
+              <img
+                src={bannerPreview}
+                alt="Banner Preview"
+                className="w-full max-w-md h-48 object-cover rounded-xl border-2 border-[#34908B] shadow-sm"
+              />
+              <button
+                type="button"
+                onClick={handleClearBanner}
+                className="absolute top-8 right-2 bg-rose-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow hover:bg-rose-700 transition"
+                title="Remove Banner"
+              >
+                ✕
+              </button>
+            </div>
           )}
         </div>
 
@@ -269,11 +318,14 @@ console.log(data)
             value={formData.date}
             min={new Date().toISOString().split("T")[0]}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
-            required
+            className={`w-full p-3 border rounded-lg outline-none ${
+              fieldErrors.date ? "border-rose-500" : "border-gray-300"
+            }`}
           />
           {fieldErrors.date && (
-            <p className="text-red-500 text-sm">{fieldErrors.date}</p>
+            <p className="text-rose-500 text-xs mt-1 font-medium">
+              {fieldErrors.date}
+            </p>
           )}
         </div>
 
@@ -287,9 +339,15 @@ console.log(data)
               name="startTime"
               value={formData.startTime}
               onChange={handleChange}
-              className="w-full p-3 border rounded-lg"
-              required
+              className={`w-full p-3 border rounded-lg outline-none ${
+                fieldErrors.startTime ? "border-rose-500" : "border-gray-300"
+              }`}
             />
+            {fieldErrors.startTime && (
+              <p className="text-rose-500 text-xs mt-1 font-medium">
+                {fieldErrors.startTime}
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -300,9 +358,15 @@ console.log(data)
               name="endTime"
               value={formData.endTime}
               onChange={handleChange}
-              className="w-full p-3 border rounded-lg"
-              required
+              className={`w-full p-3 border rounded-lg outline-none ${
+                fieldErrors.endTime ? "border-rose-500" : "border-gray-300"
+              }`}
             />
+            {fieldErrors.endTime && (
+              <p className="text-rose-500 text-xs mt-1 font-medium">
+                {fieldErrors.endTime}
+              </p>
+            )}
           </div>
         </div>
 
@@ -316,10 +380,14 @@ console.log(data)
             name="bookingDeadline"
             value={formData.bookingDeadline}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className={`w-full p-3 border rounded-lg outline-none ${
+              fieldErrors.bookingDeadline
+                ? "border-rose-500"
+                : "border-gray-300"
+            }`}
           />
           {fieldErrors.bookingDeadline && (
-            <p className="text-red-500 text-sm">
+            <p className="text-rose-500 text-xs mt-1 font-medium">
               {fieldErrors.bookingDeadline}
             </p>
           )}
@@ -335,12 +403,18 @@ console.log(data)
             name="venueName"
             placeholder="e.g. Royal Arena"
             value={formData.venueName}
-            onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
-            required
+            onChange={(e) => {
+              handleChange(e);
+              clearFieldError("venue.name");
+            }}
+            className={`w-full p-3 border rounded-lg outline-none ${
+              fieldErrors["venue.name"] ? "border-rose-500" : "border-gray-300"
+            }`}
           />
           {fieldErrors["venue.name"] && (
-            <p className="text-red-500 text-sm">{fieldErrors["venue.name"]}</p>
+            <p className="text-rose-500 text-xs mt-1 font-medium">
+              {fieldErrors["venue.name"]}
+            </p>
           )}
         </div>
 
@@ -351,14 +425,20 @@ console.log(data)
           <input
             type="text"
             name="city"
-            placeholder="e.g. New York"
+            placeholder="e.g. Kathmandu"
             value={formData.city}
-            onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
-            required
+            onChange={(e) => {
+              handleChange(e);
+              clearFieldError("venue.city");
+            }}
+            className={`w-full p-3 border rounded-lg outline-none ${
+              fieldErrors["venue.city"] ? "border-rose-500" : "border-gray-300"
+            }`}
           />
           {fieldErrors["venue.city"] && (
-            <p className="text-red-500 text-sm">{fieldErrors["venue.city"]}</p>
+            <p className="text-rose-500 text-xs mt-1 font-medium">
+              {fieldErrors["venue.city"]}
+            </p>
           )}
         </div>
 
@@ -371,12 +451,18 @@ console.log(data)
             rows="2"
             placeholder="Full venue address"
             value={formData.address}
-            onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
-            required
+            onChange={(e) => {
+              handleChange(e);
+              clearFieldError("venue.address");
+            }}
+            className={`w-full p-3 border rounded-lg outline-none resize-none ${
+              fieldErrors["venue.address"]
+                ? "border-rose-500"
+                : "border-gray-300"
+            }`}
           />
           {fieldErrors["venue.address"] && (
-            <p className="text-red-500 text-sm">
+            <p className="text-rose-500 text-xs mt-1 font-medium">
               {fieldErrors["venue.address"]}
             </p>
           )}
@@ -394,11 +480,14 @@ console.log(data)
             min="0"
             value={formData.price}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
-            required
+            className={`w-full p-3 border rounded-lg outline-none ${
+              fieldErrors.price ? "border-rose-500" : "border-gray-300"
+            }`}
           />
           {fieldErrors.price && (
-            <p className="text-red-500 text-sm">{fieldErrors.price}</p>
+            <p className="text-rose-500 text-xs mt-1 font-medium">
+              {fieldErrors.price}
+            </p>
           )}
         </div>
 
@@ -413,34 +502,16 @@ console.log(data)
             min="1"
             value={formData.totalTickets}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
-            required
+            className={`w-full p-3 border rounded-lg outline-none ${
+              fieldErrors.totalTickets ? "border-rose-500" : "border-gray-300"
+            }`}
           />
           {fieldErrors.totalTickets && (
-            <p className="text-red-500 text-sm">{fieldErrors.totalTickets}</p>
-          )}
-        </div>
-
-        {/* <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Available Tickets *
-          </label>
-          <input
-            type="number"
-            name="availableTickets"
-            placeholder="e.g. 500"
-            min="0"
-            value={formData.availableTickets}
-            onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
-            required
-          />
-          {fieldErrors.availableTickets && (
-            <p className="text-red-500 text-sm font-medium">
-              {fieldErrors.availableTickets}
+            <p className="text-rose-500 text-xs mt-1 font-medium">
+              {fieldErrors.totalTickets}
             </p>
           )}
-        </div> */}
+        </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -452,41 +523,18 @@ console.log(data)
             placeholder="5"
             value={formData.maxTicketsPerUser}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className={`w-full p-3 border rounded-lg outline-none ${
+              fieldErrors.maxTicketsPerUser
+                ? "border-rose-500"
+                : "border-gray-300"
+            }`}
           />
+          {fieldErrors.maxTicketsPerUser && (
+            <p className="text-rose-500 text-xs mt-1 font-medium">
+              {fieldErrors.maxTicketsPerUser}
+            </p>
+          )}
         </div>
-
-        {/* ---- REFUND POLICY & STATUS ---- */}
-        {/* <div className="md:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Refund Policy
-          </label>
-          <textarea
-            name="refundPolicy"
-            rows="2"
-            placeholder="Refund Policy details"
-            value={formData.refundPolicy}
-            onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
-          />
-        </div> */}
-
-        {/* <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Status
-          </label>
-          <select
-            name="status"
-            value={formData.status}
-            onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
-          >
-            <option value="draft">Draft</option>
-            <option value="published">Published</option>
-            <option value="cancelled">Cancelled</option>
-            <option value="completed">Completed</option>
-          </select>
-        </div> */}
 
         {/* ---- TAGS ---- */}
         <div className="md:col-span-2">
@@ -499,8 +547,13 @@ console.log(data)
             placeholder="Comma-separated (e.g. music, live, rock)"
             value={formData.tags}
             onChange={handleChange}
-            className="w-full p-3 border rounded-lg"
+            className="w-full p-3 border border-gray-300 rounded-lg outline-none"
           />
+          {fieldErrors.tags && (
+            <p className="text-rose-500 text-xs mt-1 font-medium">
+              {fieldErrors.tags}
+            </p>
+          )}
         </div>
 
         {/* ---- ARTISTS ---- */}
@@ -515,12 +568,12 @@ console.log(data)
                 placeholder="Artist name"
                 value={artist.name}
                 onChange={(e) => updateArtist(idx, "name", e.target.value)}
-                className="flex-1 p-2 border rounded-lg"
+                className="flex-1 p-2 border border-gray-300 rounded-lg outline-none"
               />
               <button
                 type="button"
                 onClick={() => removeArtist(idx)}
-                className="text-red-500 hover:text-red-700 font-bold px-2"
+                className="text-rose-500 hover:text-rose-700 font-bold px-2"
               >
                 ✕
               </button>
@@ -533,13 +586,18 @@ console.log(data)
           >
             + Add Artist
           </button>
+          {fieldErrors.artists && (
+            <p className="text-rose-500 text-xs mt-1 font-medium">
+              {fieldErrors.artists}
+            </p>
+          )}
         </div>
 
         {/* ---- SUBMIT BUTTON ---- */}
         <button
           type="submit"
           disabled={loading}
-          className="md:col-span-2 bg-[#34908B] text-white py-3 rounded-lg font-semibold hover:bg-[#2b7873] disabled:opacity-50 transition-colors"
+          className="md:col-span-2 bg-[#34908B] text-white py-3 rounded-lg font-semibold hover:bg-[#2b7873] disabled:opacity-50 transition-colors shadow"
         >
           {loading ? "Creating Show..." : "Create Show"}
         </button>

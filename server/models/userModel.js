@@ -28,11 +28,6 @@ const UserSchema = new mongoose.Schema(
       select: false, // hidden by default
     },
 
-    phone: {
-      type: String,
-      trim: true,
-    },
-
     profileImage: {
       type: String,
       default: "",
@@ -65,6 +60,8 @@ const UserSchema = new mongoose.Schema(
     organizer: {
       organizationName: {
         type: String,
+        unique: true,
+        sparse: true,
       },
 
       address: {
@@ -73,10 +70,14 @@ const UserSchema = new mongoose.Schema(
 
       website: {
         type: String,
+        unique: true,
+        sparse: true,
       },
 
       phone: {
         type: String,
+        unique: true,
+        sparse: true,
       },
 
       description: {
@@ -89,6 +90,8 @@ const UserSchema = new mongoose.Schema(
 
       govIDNumber: {
         type: String,
+        unique: true,
+        sparse: true,
       },
 
       govIDImage: {
@@ -145,9 +148,8 @@ const UserSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
-
 
 // ================= HASH PASSWORD =================
 UserSchema.pre("save", async function (next) {
@@ -158,10 +160,7 @@ UserSchema.pre("save", async function (next) {
   try {
     const salt = await bcrypt.genSalt(10);
 
-    this.password = await bcrypt.hash(
-      this.password,
-      salt
-    );
+    this.password = await bcrypt.hash(this.password, salt);
 
     next();
   } catch (error) {
@@ -169,46 +168,33 @@ UserSchema.pre("save", async function (next) {
   }
 });
 
-
 // ================= COMPARE PASSWORD =================
-UserSchema.methods.comparePassword =
-  async function (password) {
-    return await bcrypt.compare(
-      password,
-      this.password
-    );
-  };
-
+UserSchema.methods.comparePassword = async function (password) {
+  return await bcrypt.compare(password, this.password);
+};
 
 // ================= GENERATE JWT =================
-UserSchema.methods.generateToken =
-  function () {
-    return jwt.sign(
-      {
-        userId: this._id,
-        role: this.role,
-        email: this.email,
-      },
-      process.env.JWT_SECRET_KEY,
-      {
-        expiresIn: "7d",
-      }
-    );
-  };
-
+UserSchema.methods.generateToken = function () {
+  return jwt.sign(
+    {
+      userId: this._id,
+      role: this.role,
+      email: this.email,
+    },
+    process.env.JWT_SECRET_KEY,
+    {
+      expiresIn: "7d",
+    },
+  );
+};
 
 // ================= UPDATE LAST LOGIN =================
-UserSchema.methods.updateLastLogin =
-  async function () {
-    this.lastLogin = new Date();
-    await this.save();
-  };
-
+UserSchema.methods.updateLastLogin = async function () {
+  this.lastLogin = new Date();
+  await this.save();
+};
 
 // ================= MODEL =================
-const User = mongoose.model(
-  "User",
-  UserSchema
-);
+const User = mongoose.model("User", UserSchema);
 
 export default User;

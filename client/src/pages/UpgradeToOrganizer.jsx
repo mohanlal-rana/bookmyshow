@@ -1,4 +1,4 @@
-import { useState, useContext } from "react";
+import { useState, useContext, useRef } from "react";
 import { useNavigate } from "react-router";
 import { AuthContext } from "../store/AuthContext";
 
@@ -10,7 +10,7 @@ export default function UpgradeToOrganizer() {
     website: "",
     phone: "",
     description: "",
-    govIDType: "Citizenship", // Default option
+    govIDType: "Citizenship",
     govIDNumber: "",
   });
 
@@ -24,27 +24,66 @@ export default function UpgradeToOrganizer() {
     govIDImage: null,
   });
 
+  const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: "", text: "" });
   const navigate = useNavigate();
 
-  // Handle standard text input updates
+  // References to safely clear native HTML file inputs
+  const profileInputRef = useRef(null);
+  const govIDInputRef = useRef(null);
+
+  // Handle text input changes & clear field error dynamically
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => {
+        const updated = { ...prev };
+        delete updated[name];
+        return updated;
+      });
+    }
   };
 
-  // Handle file uploads & live image preview creation
+  // Handle file uploads & set live blob previews
   const handleFileChange = (e) => {
     const { name, files: selectedFiles } = e.target;
     const file = selectedFiles[0];
 
     if (file) {
-      setFiles((prev) => ({ ...prev, [name]: file }));
+      if (previews[name]) {
+        URL.revokeObjectURL(previews[name]);
+      }
 
-      // Generate object URL for fast previewing
-      const previewUrl = URL.createObjectURL(file);
-      setPreviews((prev) => ({ ...prev, [name]: previewUrl }));
+      setFiles((prev) => ({ ...prev, [name]: file }));
+      setPreviews((prev) => ({ ...prev, [name]: URL.createObjectURL(file) }));
+
+      if (fieldErrors[name]) {
+        setFieldErrors((prev) => {
+          const updated = { ...prev };
+          delete updated[name];
+          return updated;
+        });
+      }
+    }
+  };
+
+  // Clear selected image and revoke object URL
+  const handleClearFile = (fieldName) => {
+    if (previews[fieldName]) {
+      URL.revokeObjectURL(previews[fieldName]);
+    }
+
+    setFiles((prev) => ({ ...prev, [fieldName]: null }));
+    setPreviews((prev) => ({ ...prev, [fieldName]: null }));
+
+    if (fieldName === "profileImage" && profileInputRef.current) {
+      profileInputRef.current.value = "";
+    }
+    if (fieldName === "govIDImage" && govIDInputRef.current) {
+      govIDInputRef.current.value = "";
     }
   };
 
@@ -52,16 +91,14 @@ export default function UpgradeToOrganizer() {
     e.preventDefault();
     setLoading(true);
     setMessage({ type: "", text: "" });
+    setFieldErrors({});
 
-    // Multi-part Form Data required for Multer upload support
     const submitData = new FormData();
 
-    // 1. Append text fields
     Object.keys(formData).forEach((key) => {
       submitData.append(key, formData[key]);
     });
 
-    // 2. Append files with correct schema names
     if (files.profileImage) {
       submitData.append("profileImage", files.profileImage);
     }
@@ -70,16 +107,8 @@ export default function UpgradeToOrganizer() {
     }
 
     try {
-      // Fetch token stored after user authentication
-      const token = localStorage.getItem("token");
-
       const res = await fetch(`${API}/api/users/upgrade-to-organizer`, {
         method: "PUT",
-        headers: {
-          // Do NOT set Content-Type header when using FormData; 
-          // browser handles multipart/form-data boundaries automatically.
-          Authorization: `Bearer ${token}`,
-        },
         credentials: "include",
         body: submitData,
       });
@@ -87,6 +116,19 @@ export default function UpgradeToOrganizer() {
       const data = await res.json();
 
       if (!res.ok) {
+        // Parse array of error objects: [{ field: 'x', message: 'y' }] -> { x: 'y' }
+        if (Array.isArray(data.errors)) {
+          const formattedErrors = {};
+          data.errors.forEach((err) => {
+            if (err.field && err.message) {
+              formattedErrors[err.field] = err.message;
+            }
+          });
+          setFieldErrors(formattedErrors);
+        } else if (data.errors && typeof data.errors === "object") {
+          setFieldErrors(data.errors);
+        }
+
         throw new Error(data.message || "Upgrade request failed.");
       }
 
@@ -94,8 +136,7 @@ export default function UpgradeToOrganizer() {
         type: "success",
         text: "Application submitted successfully! Your account status is pending verification.",
       });
-      navigate("/"); // Redirect to home or dashboard after successful submission
-
+      navigate("/");
     } catch (err) {
       setMessage({
         type: "error",
@@ -108,7 +149,7 @@ export default function UpgradeToOrganizer() {
 
   return (
     <div className="min-h-screen bg-[#FDF4AF] flex items-center justify-center p-4 py-10">
-      <div className="w-full max-w-2xl bg-[#A5E9DD] p-8 rounded-2xl shadow-xl">
+      <div className="w-full max-w-2xl bg-white p-8 rounded-2xl shadow-xl">
         <h2 className="text-3xl font-extrabold text-[#0f3d3a] text-center mb-2">
           Become an Organizer
         </h2>
@@ -129,7 +170,7 @@ export default function UpgradeToOrganizer() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Section: Organization Info */}
+          {/* Organization Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-semibold text-[#0f3d3a] mb-1">
@@ -138,12 +179,17 @@ export default function UpgradeToOrganizer() {
               <input
                 type="text"
                 name="organizationName"
-                required
-                placeholder="Acme Events Co."
                 value={formData.organizationName}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 rounded-lg outline-none text-gray-800 bg-white"
+                className={`w-full px-4 py-2 rounded-lg outline-none text-gray-800 bg-white border ${
+                  fieldErrors.organizationName ? "border-rose-500" : "border-transparent"
+                }`}
               />
+              {fieldErrors.organizationName && (
+                <p className="text-xs text-rose-600 mt-1 font-medium">
+                  {fieldErrors.organizationName}
+                </p>
+              )}
             </div>
 
             <div>
@@ -153,12 +199,17 @@ export default function UpgradeToOrganizer() {
               <input
                 type="tel"
                 name="phone"
-                required
-                placeholder="+1 234 567 890"
                 value={formData.phone}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 rounded-lg outline-none text-gray-800 bg-white"
+                className={`w-full px-4 py-2 rounded-lg outline-none text-gray-800 bg-white border ${
+                  fieldErrors.phone ? "border-rose-500" : "border-transparent"
+                }`}
               />
+              {fieldErrors.phone && (
+                <p className="text-xs text-rose-600 mt-1 font-medium">
+                  {fieldErrors.phone}
+                </p>
+              )}
             </div>
           </div>
 
@@ -170,12 +221,17 @@ export default function UpgradeToOrganizer() {
               <input
                 type="text"
                 name="address"
-                required
-                placeholder="123 Main St, New York, NY"
                 value={formData.address}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 rounded-lg outline-none text-gray-800 bg-white"
+                className={`w-full px-4 py-2 rounded-lg outline-none text-gray-800 bg-white border ${
+                  fieldErrors.address ? "border-rose-500" : "border-transparent"
+                }`}
               />
+              {fieldErrors.address && (
+                <p className="text-xs text-rose-600 mt-1 font-medium">
+                  {fieldErrors.address}
+                </p>
+              )}
             </div>
 
             <div>
@@ -188,14 +244,21 @@ export default function UpgradeToOrganizer() {
                 placeholder="https://example.com"
                 value={formData.website}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 rounded-lg outline-none text-gray-800 bg-white"
+                className={`w-full px-4 py-2 rounded-lg outline-none text-gray-800 bg-white border ${
+                  fieldErrors.website ? "border-rose-500" : "border-transparent"
+                }`}
               />
+              {fieldErrors.website && (
+                <p className="text-xs text-rose-600 mt-1 font-medium">
+                  {fieldErrors.website}
+                </p>
+              )}
             </div>
           </div>
 
           <div>
             <label className="block text-sm font-semibold text-[#0f3d3a] mb-1">
-              Organization Description
+              Organization Description *
             </label>
             <textarea
               name="description"
@@ -203,16 +266,21 @@ export default function UpgradeToOrganizer() {
               placeholder="Brief description about your events or company..."
               value={formData.description}
               onChange={handleInputChange}
-              className="w-full px-4 py-2 rounded-lg outline-none text-gray-800 bg-white resize-none"
+              className={`w-full px-4 py-2 rounded-lg outline-none text-gray-800 bg-white resize-none border ${
+                fieldErrors.description ? "border-rose-500" : "border-transparent"
+              }`}
             ></textarea>
+            {fieldErrors.description && (
+              <p className="text-xs text-rose-600 mt-1 font-medium">
+                {fieldErrors.description}
+              </p>
+            )}
           </div>
 
           <hr className="border-t border-[#85d3c6] my-2" />
 
-          {/* Section: Identity & Government Verification */}
-          <h3 className="text-lg font-bold text-[#0f3d3a]">
-            Identity Verification
-          </h3>
+          {/* Identity & Government Verification */}
+          <h3 className="text-lg font-bold text-[#0f3d3a]">Identity Verification</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -229,9 +297,7 @@ export default function UpgradeToOrganizer() {
                 <option value="Passport">Passport</option>
                 <option value="Driving License">Driving License</option>
                 <option value="National ID">National ID</option>
-                <option value="Company Registration">
-                  Company Registration
-                </option>
+                <option value="Company Registration">Company Registration</option>
               </select>
             </div>
 
@@ -242,16 +308,22 @@ export default function UpgradeToOrganizer() {
               <input
                 type="text"
                 name="govIDNumber"
-                required
                 placeholder="e.g. 06-12-34567"
                 value={formData.govIDNumber}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 rounded-lg outline-none text-gray-800 bg-white"
+                className={`w-full px-4 py-2 rounded-lg outline-none text-gray-800 bg-white border ${
+                  fieldErrors.govIDNumber ? "border-rose-500" : "border-transparent"
+                }`}
               />
+              {fieldErrors.govIDNumber && (
+                <p className="text-xs text-rose-600 mt-1 font-medium">
+                  {fieldErrors.govIDNumber}
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Section: File Uploads */}
+          {/* File Uploads */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Profile Image Field */}
             <div>
@@ -259,19 +331,34 @@ export default function UpgradeToOrganizer() {
                 Profile / Logo Image
               </label>
               <input
+                ref={profileInputRef}
                 type="file"
                 name="profileImage"
                 accept="image/*"
                 onChange={handleFileChange}
                 className="w-full text-xs text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#34908B] file:text-white hover:file:bg-[#2f7f7a] cursor-pointer"
               />
+              {fieldErrors.profileImage && (
+                <p className="text-xs text-rose-600 mt-1 font-medium">
+                  {fieldErrors.profileImage}
+                </p>
+              )}
+
               {previews.profileImage && (
-                <div className="mt-2">
+                <div className="mt-3 relative inline-block">
                   <img
                     src={previews.profileImage}
                     alt="Profile Preview"
-                    className="w-16 h-16 object-cover rounded-full border-2 border-[#34908B]"
+                    className="w-20 h-20 object-cover rounded-full border-2 border-[#34908B] shadow-sm"
                   />
+                  <button
+                    type="button"
+                    onClick={() => handleClearFile("profileImage")}
+                    className="absolute -top-1 -right-1 bg-rose-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shadow hover:bg-rose-700 transition"
+                    title="Remove Image"
+                  >
+                    ✕
+                  </button>
                 </div>
               )}
             </div>
@@ -282,20 +369,34 @@ export default function UpgradeToOrganizer() {
                 Govt ID Document Image *
               </label>
               <input
+                ref={govIDInputRef}
                 type="file"
                 name="govIDImage"
                 accept="image/*"
-                required
                 onChange={handleFileChange}
                 className="w-full text-xs text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#34908B] file:text-white hover:file:bg-[#2f7f7a] cursor-pointer"
               />
+              {fieldErrors.govIDImage && (
+                <p className="text-xs text-rose-600 mt-1 font-medium">
+                  {fieldErrors.govIDImage}
+                </p>
+              )}
+
               {previews.govIDImage && (
-                <div className="mt-2">
+                <div className="mt-3 relative inline-block">
                   <img
                     src={previews.govIDImage}
                     alt="Gov ID Preview"
-                    className="w-24 h-16 object-cover rounded-lg border-2 border-[#34908B]"
+                    className="w-28 h-20 object-cover rounded-lg border-2 border-[#34908B] shadow-sm"
                   />
+                  <button
+                    type="button"
+                    onClick={() => handleClearFile("govIDImage")}
+                    className="absolute -top-1 -right-1 bg-rose-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shadow hover:bg-rose-700 transition"
+                    title="Remove Image"
+                  >
+                    ✕
+                  </button>
                 </div>
               )}
             </div>

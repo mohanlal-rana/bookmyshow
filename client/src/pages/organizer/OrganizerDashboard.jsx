@@ -99,7 +99,7 @@ export default function OrganizerDashboard() {
               Total Revenue
             </span>
             <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
-              <DollarSign className="w-5 h-5" />
+              {/* <DollarSign className="w-5 h-5" /> */}
             </div>
           </div>
           <div className="text-2xl font-bold text-gray-900">
