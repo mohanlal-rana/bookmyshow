@@ -42,7 +42,7 @@ export default function TicketDetails() {
 
   /**
    * Upgraded Download Handler:
-   * Renders a clean pass with an extra-large, borderless QR code for optimal scanner reads.
+   * Includes Date, Start Time, Ticket Type, and Price on canvas output.
    */
   const handleDownloadBrandedQR = (qrBase64, ticket, index, show) => {
     if (!qrBase64) return;
@@ -50,9 +50,9 @@ export default function TicketDetails() {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
 
-    // Enlarged Canvas Size for maximum crispness
+    // Increased Canvas Height to fit extra details
     canvas.width = 600;
-    canvas.height = 800;
+    canvas.height = 920;
 
     // High clarity settings
     ctx.imageSmoothingEnabled = false;
@@ -80,20 +80,35 @@ export default function TicketDetails() {
     ctx.fillStyle = "#1e293b";
     ctx.font = "bold 24px sans-serif";
     const titleText = show.name || show.title || "Event Ticket";
-    ctx.fillText(titleText, 300, 145);
+    ctx.fillText(titleText, 300, 140);
 
     // Venue Info
     ctx.fillStyle = "#64748b";
     ctx.font = "15px sans-serif";
     const venueText = `📍 ${show.venue?.name || "Venue"}, ${show.venue?.city || ""}`;
-    ctx.fillText(venueText, 300, 175);
+    ctx.fillText(venueText, 300, 168);
+
+    // Date & Start Time Info
+    const eventDate = show.date
+      ? new Date(show.date).toLocaleDateString("en-US", {
+          weekday: "short",
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        })
+      : "N/A";
+    const startTime = show.startTime || "N/A";
+
+    ctx.fillStyle = "#334155";
+    ctx.font = "bold 15px sans-serif";
+    ctx.fillText(`🗓️ ${eventDate}  |  ⏰ ${startTime}`, 300, 195);
 
     // Divider Line (Top)
     ctx.strokeStyle = "#e2e8f0";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(40, 195);
-    ctx.lineTo(560, 195);
+    ctx.moveTo(40, 215);
+    ctx.lineTo(560, 215);
     ctx.stroke();
 
     // Draw Large Borderless QR Code Image
@@ -102,10 +117,10 @@ export default function TicketDetails() {
     qrImage.src = qrBase64;
 
     qrImage.onload = () => {
-      // Extra large size (420x420) centered on canvas, no outer border or box
-      const qrSize = 420;
+      // Large QR Code Size (380x380) centered on canvas
+      const qrSize = 380;
       const qrX = (canvas.width - qrSize) / 2;
-      const qrY = 215;
+      const qrY = 230;
 
       ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
 
@@ -113,22 +128,29 @@ export default function TicketDetails() {
       ctx.strokeStyle = "#e2e8f0";
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(40, 655);
-      ctx.lineTo(560, 655);
+      ctx.moveTo(40, 630);
+      ctx.lineTo(560, 630);
       ctx.stroke();
 
-      // Ticket Price Display
+      // Ticket Type & Price Display
+      const ticketType = ticket.ticketType || "Standard Pass";
+      const ticketPrice = ticket.price ?? show.price ?? 0;
+
+      ctx.fillStyle = "#1e293b";
+      ctx.font = "bold 16px sans-serif";
+      ctx.fillText(`Type: ${ticketType}`, 300, 665);
+
       ctx.fillStyle = "#34908B";
-      ctx.font = "bold 18px sans-serif";
-      ctx.fillText(`Price: Rs. ${ticket.price || 0}`, 300, 690);
+      ctx.font = "bold 22px sans-serif";
+      ctx.fillText(`Price: Rs. ${ticketPrice}`, 300, 705);
 
       // Bottom Footer Bar
       ctx.fillStyle = "#f8fafc";
-      ctx.fillRect(0, 725, canvas.width, 75);
+      ctx.fillRect(0, 840, canvas.width, 80);
 
       ctx.fillStyle = "#64748b";
       ctx.font = "13px sans-serif";
-      ctx.fillText("Please present this QR pass at the entrance gate.", 300, 765);
+      ctx.fillText("Please present this QR pass at the entrance gate.", 300, 885);
 
       // Trigger File Download
       const link = document.createElement("a");
@@ -207,6 +229,9 @@ export default function TicketDetails() {
             <p className="text-sm text-gray-500 mt-1">
               📍 {show.venue?.name}, {show.venue?.city}
             </p>
+            <p className="text-xs font-semibold text-gray-600 mt-1">
+              🗓️ {show.date ? new Date(show.date).toLocaleDateString() : ""} | ⏰ {show.startTime}
+            </p>
           </div>
 
           <div className="text-left md:text-right border-t md:border-t-0 pt-3 md:pt-0 border-gray-100">
@@ -254,7 +279,7 @@ export default function TicketDetails() {
                   </span>
                 </div>
 
-                {/* QR Display - Enlarged and Borderless */}
+                {/* QR Display */}
                 {t.qrCode ? (
                   <div className="bg-white p-2 flex flex-col items-center">
                     <img
@@ -271,8 +296,8 @@ export default function TicketDetails() {
 
                 {/* Info & Download Action */}
                 <div className="w-full space-y-3 text-center">
-                  <div className="text-sm font-semibold text-gray-700">
-                    Price: Rs. {t.price}
+                  <div className="text-xs font-medium text-gray-500">
+                    Type: <span className="font-semibold text-gray-700">{t.ticketType || "Standard"}</span> | Price: <span className="font-semibold text-gray-700">Rs. {t.price ?? show.price}</span>
                   </div>
 
                   <button

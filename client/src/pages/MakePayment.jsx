@@ -78,7 +78,7 @@ export default function MakePayment() {
 
       const initData = await initRes.json();
       if (!initRes.ok) throw new Error(initData.message || "eSewa initialization failed.");
-
+      
       // 3. Construct and auto-submit form to eSewa portal
       const { esewaFormData } = initData;
       const form = document.createElement("form");
