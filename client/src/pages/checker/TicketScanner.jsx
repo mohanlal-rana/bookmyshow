@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useContext } from "react";
-import { Html5Qrcode, Html5QrcodeScanner } from "html5-qrcode";
+import React, { useState, useEffect, useRef, useContext, useCallback } from "react";
+import { Html5Qrcode } from "html5-qrcode";
 import {
   CheckCircle2,
   XCircle,
@@ -7,7 +7,6 @@ import {
   RefreshCw,
   User,
   Ticket,
-  Calendar,
   Camera,
   Film,
   Search,
@@ -22,7 +21,7 @@ const TicketScanner = () => {
   const [selectedShow, setSelectedShow] = useState(null);
   const [fetchingShows, setFetchingShows] = useState(true);
 
-  // Searchable Dropdown State
+  // Dropdown state
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const dropdownRef = useRef(null);
@@ -32,14 +31,13 @@ const TicketScanner = () => {
   const [scanResult, setScanResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [lastScanned, setLastScanned] = useState(null);
 
-  const scannerRef = useRef(null);
+  const html5QrCodeRef = useRef(null);
   const fileInputRef = useRef(null);
   const isProcessingRef = useRef(false);
   const { API } = useContext(AuthContext);
 
-  // Synchronous ref for selectedShow so scanner callbacks always see the current show ID
+  // Sync ref for show selection
   const selectedShowIdRef = useRef(selectedShow?._id || "");
   useEffect(() => {
     selectedShowIdRef.current = selectedShow?._id || "";
@@ -72,14 +70,12 @@ const TicketScanner = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Fetch available shows on component mount
+  // Fetch available shows on mount
   useEffect(() => {
     const fetchShows = async () => {
       try {
         setFetchingShows(true);
-        const response = await fetch(`${API}/api/shows`, {
-          credentials: "include",
-        });
+        const response = await fetch(`${API}/api/shows`, { credentials: "include" });
         const data = await response.json();
 
         if (response.ok) {
@@ -98,17 +94,7 @@ const TicketScanner = () => {
     fetchShows();
   }, [API]);
 
-  // Filter shows based on search query
-  const filteredShows = shows.filter((show) => {
-    const query = searchTerm.toLowerCase();
-    const showName = (show.name || show.title || "").toLowerCase();
-    const showGenre = (show.genre || "").toLowerCase();
-    const venueName = (show.venue?.name || "").toLowerCase();
-
-    return showName.includes(query) || showGenre.includes(query) || venueName.includes(query);
-  });
-
-  // Audio feedback cues
+  // Audio feedback
   const playSound = (type) => {
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -132,15 +118,30 @@ const TicketScanner = () => {
         osc.stop(audioContext.currentTime + 0.25);
       }
     } catch (e) {
-      console.warn("Audio playback not supported or blocked by browser", e);
+      console.warn("Audio playback not supported or blocked", e);
     }
   };
 
-  // Shared verification logic
-  const verifyTicket = async (decodedText) => {
-    if (isProcessingRef.current || decodedText === lastScanned) return;
+  // Safely stop the active camera instance
+  const stopCameraInstance = async () => {
+    if (html5QrCodeRef.current) {
+      try {
+        if (html5QrCodeRef.current.isScanning) {
+          await html5QrCodeRef.current.stop();
+        }
+        html5QrCodeRef.current.clear();
+      } catch (err) {
+        console.warn("Error stopping scanner instance:", err);
+      } finally {
+        html5QrCodeRef.current = null;
+      }
+    }
+  };
 
-    // Check if a show is selected
+  // Core ticket verification logic
+  const verifyTicket = async (decodedText) => {
+    if (isProcessingRef.current) return;
+
     if (!selectedShowIdRef.current) {
       playSound("error");
       setError({ message: "Please select a show from the dropdown before scanning!" });
@@ -148,26 +149,18 @@ const TicketScanner = () => {
     }
 
     isProcessingRef.current = true;
-    setLastScanned(decodedText);
     setLoading(true);
     setError(null);
     setScanResult(null);
 
-    // Pause camera if active
-    if (isCameraActive && scannerRef.current) {
-      try {
-        scannerRef.current.pause(true);
-      } catch (e) {
-        console.warn("Could not pause scanner:", e);
-      }
-    }
+    // Stop camera on scan detection so background doesn't stay frozen
+    await stopCameraInstance();
+    setIsCameraActive(false);
 
     try {
       const response = await fetch(`${API}/api/tickets/scan`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           qrData: decodedText,
@@ -204,44 +197,48 @@ const TicketScanner = () => {
     }
   };
 
-  // --- Camera QR Scanner Setup ---
+  // Start direct Html5Qrcode camera stream
+  const startCamera = async () => {
+    if (!selectedShowIdRef.current) {
+      setError({ message: "Please select a show first!" });
+      return;
+    }
+
+    setError(null);
+    setScanResult(null);
+    setIsCameraActive(true);
+  };
+
+  // Handle active camera rendering & teardown
   useEffect(() => {
+    let activeScanner = null;
+
     if (isCameraActive) {
-      const scanner = new Html5QrcodeScanner(
-        "reader",
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0,
-        },
-        false
-      );
+      const html5QrCode = new Html5Qrcode("reader");
+      html5QrCodeRef.current = html5QrCode;
+      activeScanner = html5QrCode;
 
-      scanner.render(
-        (decodedText) => {
-          // on success – pause and verify
-          if (scannerRef.current) {
-            scannerRef.current.pause(true).catch(() => {});
-          }
+      const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+      html5QrCode
+        .start({ facingMode: "environment" }, config, (decodedText) => {
           verifyTicket(decodedText);
-        },
-        () => {} // ignore failure
-      );
-
-      scannerRef.current = scanner;
+        })
+        .catch((err) => {
+          console.error("Failed to start camera:", err);
+          setError({ message: "Could not access camera. Please check permissions." });
+          setIsCameraActive(false);
+        });
     }
 
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current
-          .clear()
-          .catch((err) => console.error("Failed to clear scanner", err));
-        scannerRef.current = null;
+      if (activeScanner && activeScanner.isScanning) {
+        activeScanner.stop().then(() => activeScanner.clear()).catch(console.warn);
       }
     };
   }, [isCameraActive]);
 
-  // --- Image Upload QR Decoding ---
+  // Image Upload Handler
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -258,41 +255,35 @@ const TicketScanner = () => {
       await verifyTicket(decodedText);
     } catch (err) {
       html5QrCode.clear();
-      setError({
-        message: "Could not read a valid QR code from the uploaded image.",
-      });
+      setError({ message: "Could not read a valid QR code from the image." });
       setLoading(false);
     } finally {
-      // Reset file input so same file can be re-uploaded
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  // Reset state after a scan / error
+  // Reset scanner state for next check-in
   const handleReset = () => {
     setScanResult(null);
     setError(null);
-    setLastScanned(null);
     isProcessingRef.current = false;
-
-    // Resume camera if active
-    if (isCameraActive && scannerRef.current) {
-      try {
-        scannerRef.current.resume();
-      } catch (e) {
-        console.warn("Could not resume scanner:", e);
-      }
-    }
   };
 
-  // Cancel camera mode
-  const handleCloseCamera = () => {
+  const handleCloseCamera = async () => {
+    await stopCameraInstance();
     setIsCameraActive(false);
     setError(null);
     setScanResult(null);
     setLoading(false);
-    // If scanner was paused, we clear it in the cleanup effect
   };
+
+  const filteredShows = shows.filter((show) => {
+    const query = searchTerm.toLowerCase();
+    const showName = (show.name || show.title || "").toLowerCase();
+    const showGenre = (show.genre || "").toLowerCase();
+    const venueName = (show.venue?.name || "").toLowerCase();
+    return showName.includes(query) || showGenre.includes(query) || venueName.includes(query);
+  });
 
   return (
     <div className="max-w-md mx-auto p-4 min-h-screen bg-slate-900 text-white flex flex-col">
@@ -303,7 +294,7 @@ const TicketScanner = () => {
           <Camera className="w-6 h-6 text-indigo-400" /> Ticket Verification
         </h1>
 
-        {/* Custom Searchable Dropdown */}
+        {/* Searchable Dropdown */}
         <div className="relative text-left" ref={dropdownRef}>
           <button
             type="button"
@@ -330,10 +321,9 @@ const TicketScanner = () => {
             />
           </button>
 
-          {/* Search Popover Menu */}
           {isDropdownOpen && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-              <div className="p-2 border-b border-slate-700 flex items-center gap-2 bg-slate-850">
+            <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+              <div className="p-2 border-b border-slate-700 flex items-center gap-2">
                 <Search className="w-4 h-4 text-slate-400 ml-2 shrink-0" />
                 <input
                   type="text"
@@ -344,10 +334,7 @@ const TicketScanner = () => {
                   autoFocus
                 />
                 {searchTerm && (
-                  <button
-                    onClick={() => setSearchTerm("")}
-                    className="text-slate-400 hover:text-white p-1"
-                  >
+                  <button onClick={() => setSearchTerm("")} className="text-slate-400 hover:text-white p-1">
                     <X className="w-3.5 h-3.5" />
                   </button>
                 )}
@@ -355,15 +342,10 @@ const TicketScanner = () => {
 
               <ul className="max-h-56 overflow-y-auto divide-y divide-slate-700/50">
                 {filteredShows.length === 0 ? (
-                  <li className="p-3 text-xs text-center text-slate-400">
-                    No matching shows found
-                  </li>
+                  <li className="p-3 text-xs text-center text-slate-400">No matching shows found</li>
                 ) : (
                   filteredShows.map((show) => {
                     const isSelected = selectedShow?._id === show._id;
-                    const showTitle = show.name || show.title || "Untitled Show";
-                    const formattedTime = formatShowTime(show.startTime);
-
                     return (
                       <li
                         key={show._id}
@@ -374,22 +356,18 @@ const TicketScanner = () => {
                           setError(null);
                         }}
                         className={`p-3 text-sm cursor-pointer transition flex items-center justify-between hover:bg-slate-700/60 ${
-                          isSelected
-                            ? "bg-indigo-600/20 text-indigo-300 font-semibold"
-                            : "text-slate-200"
+                          isSelected ? "bg-indigo-600/20 text-indigo-300 font-semibold" : "text-slate-200"
                         }`}
                       >
                         <div className="truncate">
-                          <p className="truncate">{showTitle}</p>
+                          <p className="truncate">{show.name || show.title || "Untitled Show"}</p>
                           {show.venue?.name && (
-                            <p className="text-xs text-slate-400 truncate">
-                              {show.venue.name}
-                            </p>
+                            <p className="text-xs text-slate-400 truncate">{show.venue.name}</p>
                           )}
                         </div>
-                        {formattedTime && (
+                        {show.startTime && (
                           <span className="text-xs text-indigo-400 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-800/40 shrink-0 ml-2">
-                            {formattedTime}
+                            {formatShowTime(show.startTime)}
                           </span>
                         )}
                       </li>
@@ -403,12 +381,11 @@ const TicketScanner = () => {
       </header>
 
       <main className="my-auto py-6 space-y-5">
-        {/* Mode selection buttons (only when no result/error and camera not active) */}
         {!isCameraActive && !scanResult && !error && (
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
-              onClick={() => setIsCameraActive(true)}
+              onClick={startCamera}
               disabled={loading || !selectedShow}
               className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700/80 border border-slate-700 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-slate-200 transition disabled:opacity-50"
             >
@@ -436,7 +413,6 @@ const TicketScanner = () => {
           </div>
         )}
 
-        {/* Camera Scanner */}
         {isCameraActive && (
           <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700 relative shadow-2xl">
             <button
@@ -449,25 +425,18 @@ const TicketScanner = () => {
               Point camera at ticket QR code
             </p>
             <div id="reader" className="overflow-hidden rounded-lg"></div>
-            {loading && (
-              <div className="mt-4 text-center text-indigo-400 flex items-center justify-center gap-2 font-medium">
-                <RefreshCw className="w-5 h-5 animate-spin" /> Verifying payload...
-              </div>
-            )}
           </div>
         )}
 
-        {/* Loading overlay when uploading without camera */}
-        {!isCameraActive && loading && (
+        {loading && (
           <div className="bg-slate-800/80 p-6 rounded-2xl text-center border border-slate-700">
             <RefreshCw className="w-8 h-8 animate-spin text-indigo-400 mx-auto mb-2" />
-            <p className="text-sm text-slate-300">Processing image...</p>
+            <p className="text-sm text-slate-300">Verifying ticket...</p>
           </div>
         )}
 
-        {/* Success Modal */}
         {scanResult && (
-          <div className="bg-emerald-950/80 border-2 border-emerald-500 rounded-2xl p-6 text-center shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-emerald-950/80 border-2 border-emerald-500 rounded-2xl p-6 text-center shadow-2xl">
             <CheckCircle2 className="w-20 h-20 text-emerald-400 mx-auto mb-3 animate-bounce" />
             <h2 className="text-2xl font-black text-emerald-300 tracking-wide uppercase">
               {scanResult.message}
@@ -500,16 +469,15 @@ const TicketScanner = () => {
 
             <button
               onClick={handleReset}
-              className="mt-6 w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition shadow-lg shadow-emerald-600/30"
+              className="mt-6 w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition"
             >
               Scan Next Ticket
             </button>
           </div>
         )}
 
-        {/* Error Modal */}
         {error && (
-          <div className="bg-rose-950/80 border-2 border-rose-500 rounded-2xl p-6 text-center shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-200 space-y-4">
+          <div className="bg-rose-950/80 border-2 border-rose-500 rounded-2xl p-6 text-center shadow-2xl space-y-4">
             <XCircle className="w-20 h-20 text-rose-500 mx-auto" />
             <h2 className="text-xl font-bold text-rose-300">Verification Failed</h2>
             <p className="text-sm text-rose-200/90">{error.message}</p>
@@ -525,7 +493,7 @@ const TicketScanner = () => {
 
             <button
               onClick={handleReset}
-              className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl transition shadow-lg shadow-rose-600/30"
+              className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl transition"
             >
               Try Again
             </button>
