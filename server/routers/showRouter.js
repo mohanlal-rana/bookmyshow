@@ -16,8 +16,6 @@ router.get("/recommended", authenticateUser, getRecommendedShows);
 router.put("/saved/:showId", authenticateUser, toggleSaveShow);
 router.get("/saved-shows", authenticateUser, getSavedShows);
 
-router.get("/:id", getShowById);
-
 //organizer routes
 
 router.post("/",authenticateUser,authorizeOrganizer,  upload.fields([
@@ -33,7 +31,7 @@ router.delete("/organizer/shows/:id", authenticateUser, authorizeOrganizer, dele
 
 //admin routes
 
-router.get("/admin/",authenticateUser,authorizeAdmin, getShowsByAdmin);
+router.get("/admin",authenticateUser,authorizeAdmin, getShowsByAdmin);
 router.get("/admin/:id", authenticateUser, authorizeAdmin, getShowByAdminId);
 router.delete("/admin/:id", authenticateUser, authorizeAdmin, deleteShowByAdmin);
 router.patch(
@@ -43,5 +41,6 @@ router.patch(
   verifyShow
 );
 
+router.get("/:id", getShowById);
 
 export default router;

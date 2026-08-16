@@ -68,7 +68,7 @@ export default function Header() {
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
         {/* LOGO */}
         <Link to="/" className="text-2xl font-bold tracking-tight hover:opacity-90 transition">
-          🎟 EventHub
+          🎟 BookMyShow
         </Link>
 
         {/* DESKTOP NAV */}
