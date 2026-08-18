@@ -1,7 +1,32 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 export default function PaymentFailure() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const rawQuery = window.location.search;
+  let failureDetail = null;
+  const encodedData = searchParams.get("data");
+  if (encodedData) {
+    try {
+      const base64 = encodedData.replace(/ /g, "+");
+      const jsonStr = decodeURIComponent(
+        atob(base64)
+          .split("")
+          .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+          .join(""),
+      );
+      const decoded = JSON.parse(jsonStr);
+      failureDetail = {
+        status: decoded.status,
+        transactionUuid: decoded.transaction_uuid,
+        message: decoded.message,
+        raw: decoded,
+      };
+    } catch {
+      failureDetail = { raw: encodedData };
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#FDF4AF] flex items-center justify-center p-6">
@@ -13,6 +38,45 @@ export default function PaymentFailure() {
         <p className="text-sm text-gray-600">
           Your transaction with eSewa was cancelled or encountered an error.
         </p>
+
+        {failureDetail && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-left text-xs text-gray-700 space-y-1">
+            {failureDetail.status && (
+              <p>
+                <span className="font-bold">Status:</span> {failureDetail.status}
+              </p>
+            )}
+            {failureDetail.transactionUuid && (
+              <p className="break-all">
+                <span className="font-bold">Transaction UUID:</span>{" "}
+                {failureDetail.transactionUuid}
+              </p>
+            )}
+            {failureDetail.message && (
+              <p>
+                <span className="font-bold">Reason:</span> {failureDetail.message}
+              </p>
+            )}
+            {failureDetail.raw && !failureDetail.status && (
+              <p className="break-all">{failureDetail.raw}</p>
+            )}
+          </div>
+        )}
+
+        {!failureDetail && rawQuery && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-left text-xs text-gray-700 break-all">
+            <p className="font-bold mb-1">Raw eSewa redirect URL:</p>
+            <p>{rawQuery}</p>
+          </div>
+        )}
+
+        {!failureDetail && !rawQuery && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-left text-xs text-gray-700">
+            eSewa sent <span className="font-bold">no query parameters</span> on
+            this failure redirect. The gateway rejected the payment before
+            giving any details.
+          </div>
+        )}
 
         <div className="flex gap-3 justify-center pt-2">
           <button

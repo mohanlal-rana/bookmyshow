@@ -65,7 +65,12 @@ export const scanTicket = async (req, res) => {
         message: `Payment pending or invalid (Status: ${booking.paymentStatus})`,
       });
     }
-
+    if (booking.bookingStatus === "cancelled") {
+      return res.status(400).json({
+        success: false,
+        message: "Booking has been cancelled",
+      });
+    } 
     // 6. Find target ticket inside booking array
     const ticket = booking.tickets.find((t) => t.ticketId === ticketId);
 

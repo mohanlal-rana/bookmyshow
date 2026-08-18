@@ -47,27 +47,31 @@ export default function MakePayment() {
   }
 
   // Real eSewa Flow: Create pending booking -> Fetch HMAC signature -> Auto Submit POST form
+  const createPendingBooking = async () => {
+    const createRes = await fetch(`${API}/api/bookings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        showId: show._id,
+        ticketType: ticketType.toLowerCase(), // Ensures lowercase 'standard' or 'student'
+        totalTickets: quantity,
+      }),
+    });
+
+    const createData = await createRes.json();
+    if (!createRes.ok) throw new Error(createData.message || "Failed to create booking.");
+
+    return createData.booking._id;
+  };
+
   const handleEsewaPayment = async () => {
     setLoading(true);
     setErrorMsg("");
 
     try {
       // 1. Create Pending Booking
-      const createRes = await fetch(`${API}/api/bookings`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          showId: show._id,
-          ticketType: ticketType.toLowerCase(), // Ensures lowercase 'standard' or 'student'
-          totalTickets: quantity,
-        }),
-      });
-
-      const createData = await createRes.json();
-      if (!createRes.ok) throw new Error(createData.message || "Failed to create booking.");
-
-      const bookingId = createData.booking._id;
+      const bookingId = await createPendingBooking();
 
       // 2. Request eSewa Gateway Signature Data
       const initRes = await fetch(`${API}/api/bookings/esewa-initiate/${bookingId}`, {
@@ -99,6 +103,30 @@ export default function MakePayment() {
       form.submit();
     } catch (err) {
       setErrorMsg(err.message || "Payment initiation failed.");
+      setLoading(false);
+    }
+  };
+
+  // Demo Mode Fallback: Confirm the booking without calling eSewa
+  const isDemoMode = import.meta.env.VITE_DEMO_MODE === "true";
+  const handleDemoPayment = async () => {
+    setLoading(true);
+    setErrorMsg("");
+
+    try {
+      const bookingId = await createPendingBooking();
+      const demoRes = await fetch(`${API}/api/bookings/demo-confirm/${bookingId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+
+      const demoData = await demoRes.json();
+      if (!demoRes.ok) throw new Error(demoData.message || "Demo payment failed.");
+
+      navigate("/my-bookings", { replace: true });
+    } catch (err) {
+      setErrorMsg(err.message || "Demo payment failed.");
       setLoading(false);
     }
   };
@@ -182,6 +210,16 @@ export default function MakePayment() {
             >
               {loading ? "Redirecting to eSewa..." : `Pay Rs. ${totalAmount} via eSewa`}
             </button>
+
+            {isDemoMode && (
+              <button
+                onClick={handleDemoPayment}
+                disabled={loading}
+                className="w-full bg-[#34908B] hover:bg-[#2b7873] text-white font-bold py-3.5 rounded-xl transition shadow-md disabled:opacity-50"
+              >
+                {loading ? "Confirming..." : "Demo: Confirm Payment (skip eSewa)"}
+              </button>
+            )}
           </div>
         </div>
       </div>

@@ -9,6 +9,8 @@ import {
   getAdminBookings,
   initiateEsewaPayment,
   verifyEsewaPayment,
+  checkEsewaStatus,
+  demoConfirmBooking,
   refundBooking,
 } from "../controllers/bookingController.js";
 import { authenticateUser, authorizeAdmin, authorizeOrganizer } from "../middlewares/authMiddleware.js";
@@ -19,6 +21,8 @@ const router = express.Router();
 router.post("/",authenticateUser,createBooking);
 router.post("/esewa-initiate/:bookingId", authenticateUser, initiateEsewaPayment);
 router.post("/esewa-verify", authenticateUser, verifyEsewaPayment);
+router.get("/esewa-status", authenticateUser, checkEsewaStatus);
+router.post("/demo-confirm/:bookingId", authenticateUser, demoConfirmBooking);
 
 // READ ALL
 router.get("/",authenticateUser ,getUserBookings);

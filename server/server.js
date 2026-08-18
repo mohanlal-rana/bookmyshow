@@ -4,6 +4,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import CONNECT_DB from "./utils/db.js";
 import path from "path";
+import { fileURLToPath } from "url";
 
 import authRouter from "./routers/authRouter.js";
 import showRouter from "./routers/showRouter.js";
@@ -12,7 +13,8 @@ import userRouter from "./routers/userRouter.js";
 import checkRouter from "./routers/checkRouter.js";
 import dashboardRouter from "./routers/dashboardRouter.js";
 
-dotenv.config();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, ".env") });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
